@@ -25,6 +25,8 @@ jobs:
 
       # Собираем содержимое site/ в корень ветки gh-pages, не трогая исходный checkout.
       - name: Сборка ветки gh-pages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eu
           build="$(mktemp -d)"
