@@ -9,9 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
@@ -20,22 +18,19 @@ concurrency:
 jobs:
   deploy:
     name: Публикация
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - name: Исходники
         uses: actions/checkout@v4
-
-      - name: Настройка Pages
-        uses: actions/configure-pages@v5
-
-      - name: Загрузка сайта
-        uses: actions/upload-pages-artifact@v3
         with:
-          path: site
+          fetch-depth: 0
 
-      - name: Публикация
-        id: deployment
-        uses: actions/deployment-pages@v4
+      - name: Сборка ветки gh-pages
+        run: |
+          git config user.name  'github-pages'
+          git config user.email 'github-pages@users.noreply.github.com'
+          git checkout --orphan gh-pages
+          git reset
+          git add -f site
+          git commit -m 'Публикация сайта'
+          git push --force origin gh-pages
