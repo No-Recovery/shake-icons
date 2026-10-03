@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Сквозная проверка compose.js</title>
+<style>
+  body { font: 13px ui-monospace, Menlo, Consolas, monospace; background: #030712; color: #eee; padding: 16px; }
+  pre { white-space: pre-wrap; }
+  #screen { width: 180px; border: 1px solid #333; }
+  .hide { display: none; }
+</style>
+</head>
+<body>
+<pre id="out">запуск…</pre>
+
+<!-- Каркас, который ожидает compose.js -->
+<div class="hide">
+  <span id="statIcons">—</span>
+  <span id="statState">—</span>
+  <span id="tilt"></span>
+  <span id="hint"></span>
+  <button id="gyro"></button>
+  <button id="shake"></button>
+  <button id="reset"></button>
+  <input type="range" id="power" value="100">
+  <input type="range" id="sens" value="14">
+  <canvas id="screen"></canvas>
+  <div id="loader"></div>
+  <pre id="fatal" hidden></pre>
+</div>
+
+<script src="site/lib.js"></script>
+<script src="testdata.js"></script>
+<script>
+/* Заглушки: отдаём синтетическую пару напрямую, без IndexedDB */
+'use strict';
+location.hash = '#e2e';
+const PAIR = tdMakePair();
+function idbGet() {
+  return Promise.resolve({ clean: PAIR.clean, icons: PAIR.withIcons, at: 0 });
+}
+function loadBitmap(src) {
+  return Promise.resolve(src);
+}
+</script>
+<script src="site/compose.js"></script>
+<script>
+'use strict';
+
+const log = [];
+let fails = 0;
+
+function check(name, ok, detail) {
+  if (!ok) fails++;
+  log.push((ok ? 'ok   ' : 'FAIL ') + name + (detail ? '  [' + detail + ']' : ''));
+  paint();
+}
+
+function paint() {
+  document.getElementById('out').textContent =
+    log.join('\n') + '\n\n' + (fails === 0 ? 'RESULT: PASS' : 'RESULT: FAIL (' + fails + ')');
+  document.documentElement.dataset.result = fails === 0 ? 'pass' : 'fail';
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+/* Прокручиваем физику детерминированно: rAF в headless тикает нестабильно,
+   а frame() — это лишь цикл step() + render(). */
+function advance(seconds, dt) {
+  dt = dt || 1 / 60;
+  const n = Math.round(seconds / dt);
+  for (let i = 0; i < n; i++) { step(dt); render(); }
+}
+
+function meanDiff(a, b) {
+  if (a.data.length !== b.data.length) return 1e9;
+  let sum = 0;
+  for (let i = 0; i < a.data.length; i += 4) {
+    sum += Math.abs(a.data[i] - b.data[i])
+         + Math.abs(a.data[i + 1] - b.data[i + 1])
+         + Math.abs(a.data[i + 2] - b.data[i + 2]);
+  }
+  return sum / (a.data.length / 4) / 3;
+}
+
+async function run() {
+  /* ждём, пока main() соберёт сцену */
+  const stat = document.getElementById('statIcons');
+  for (let i = 0; i < 60 && stat.textContent === '—'; i++) await sleep(50);
+  await sleep(150);
+
+  const fatal = document.getElementById('fatal');
+  check('без экрана ошибки', fatal.hidden === true,
+        'fatal="' + fatal.textContent + '" | ' +
+        (document.documentElement.dataset.jsError || '').slice(0, 300));
+
+  const analysis = analysisSize(PAIR.clean);
+  check('найдено 16 иконок', stat.textContent === String(PAIR.expected.length),
+        'найдено ' + stat.textContent);
+
+  const screen = document.getElementById('screen');
+  check('канва в масштабе анализа',
+        screen.width === analysis.w && screen.height === analysis.h,
+        screen.width + 'x' + screen.height + ', ожидалось ' + analysis.w + 'x' + analysis.h);
+
+  /* эталон: чистый экран + нарисованные иконки */
+  const ref = document.createElement('canvas');
+  ref.width = analysis.w;
+  ref.height = analysis.h;
+  const rc = ref.getContext('2d', { willReadFrequently: true });
+  rc.drawImage(PAIR.clean, 0, 0, analysis.w, analysis.h);
+  rc.drawImage(PAIR.withIcons, 0, 0, analysis.w, analysis.h);
+  const refData = rc.getImageData(0, 0, analysis.w, analysis.h);
+
+  const shot = () => screen.getContext('2d').getImageData(0, 0, screen.width, screen.height);
+
+  const d0 = meanDiff(shot(), refData);
+  check('в покое совпадает с эталоном', d0 < 12, 'средняя разница ' + d0.toFixed(2));
+
+  /* тряска отпускает иконки */
+  document.getElementById('shake').click();
+  const st = document.getElementById('statState').textContent;
+  check('тряска отпускает иконки', /в движении 16/.test(st), st);
+
+  /* иконки двигаются и не совпадают с эталоном */
+  advance(0.6);
+  const d1 = meanDiff(shot(), refData);
+  check('после тряски иконки двинулись', d1 > d0 + 0.5,
+        'было ' + d0.toFixed(2) + ', стало ' + d1.toFixed(2));
+
+  /* смещение должно быть вниз: телефон наклонён вперёд (beta > 0) */
+  reset();
+  beta = 60;
+  document.getElementById('shake').click();
+  advance(0.6);
+  const moved = icons.filter(i => i.free);
+  const down = moved.filter(i => i.y > i.homeY).length;
+  check('иконки падают вниз при наклоне',
+        moved.length > 0 && down >= moved.length * 0.8,
+        'вниз ' + down + ' из ' + moved.length);
+  beta = 0;
+
+  /* гравитация по горизонтали: при gamma > 0 иконки уходят вправо */
+  reset();
+  gamma = 45;
+  document.getElementById('shake').click();
+  advance(0.6);
+  const right = icons.filter(i => i.free && i.x > i.homeX).length;
+  check('при наклоне вправо иконки идут вправо',
+        right >= icons.length * 0.8, 'вправо ' + right + ' из ' + icons.length);
+  gamma = 0;
+
+  /* телефон плашмя: гравитации нет, иконки только гаснут */
+  reset();
+  document.getElementById('shake').click();
+  advance(4);
+  const settled = icons.filter(i => Math.hypot(i.vx, i.vy) < 1).length;
+  check('без наклона иконки останавливаются', settled === icons.length,
+        'остановились ' + settled + ' из ' + icons.length);
+
+  /* небольшой наклон всё ещё сдвигает иконки */
+  reset();
+  gamma = 12;
+  document.getElementById('shake').click();
+  advance(1.5);
+  check('слабый наклон тоже сдвигает иконки',
+        icons.filter(i => i.free && i.x > i.homeX).length >= icons.length * 0.8,
+        'вправо ' + icons.filter(i => i.free && i.x > i.homeX).length + ' из ' + icons.length);
+  gamma = 0;
+
+  /* возврат на места */
+  reset();
+  advance(0.1);
+  check('кнопка возврата работает',
+        document.getElementById('statState').textContent === 'на местах',
+        document.getElementById('statState').textContent);
+
+  const d2 = meanDiff(shot(), refData);
+  check('после возврата снова эталон', d2 < 12, 'средняя разница ' + d2.toFixed(2));
+
+  /* иконки не выходят за края экрана */
+  const out = icons.filter(i => i.x < 0 || i.y < 0 || i.x + i.w > W || i.y + i.h > H).length;
+  check('иконки не вылетают за экран', out === 0, 'за краями ' + out);
+}
+
+run()
+  .catch(err => { check('исключение', false, err.message); })
+  .then(() => setTimeout(paint, 50));
+</script>
+</body>
+</html>

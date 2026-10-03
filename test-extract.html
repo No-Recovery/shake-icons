@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Проверка извлечения иконок</title>
+<style>
+  body { font: 13px ui-monospace, Menlo, Consolas, monospace; background: #030712; color: #eee; padding: 16px; }
+  pre { white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<pre id="out">запуск…</pre>
+
+<script src="site/lib.js"></script>
+<script src="testdata.js"></script>
+<script>
+'use strict';
+
+const log = [];
+let fails = 0;
+
+function check(name, ok, detail) {
+  if (!ok) fails++;
+  log.push((ok ? 'ok   ' : 'FAIL ') + name + (detail ? '  [' + detail + ']' : ''));
+}
+
+try {
+  const { clean, withIcons, expected } = tdMakePair();
+  const res = analyze(clean, withIcons);
+
+  check('размер анализа не больше 1500', res.w <= 1500 && res.h <= 1500, res.w + 'x' + res.h);
+
+  /* Авто-определение: снимок с иконками должен иметь больше границ */
+  check('иконки определены на втором снимке', res.edgeB > res.edgeA,
+        'edgeA=' + res.edgeA.toFixed(2) + ' edgeB=' + res.edgeB.toFixed(2));
+
+  let maskPct = 0;
+  for (let i = 0; i < res.mask.length; i++) if (res.mask[i]) maskPct++;
+  maskPct = 100 * maskPct / res.mask.length;
+  check('зона различий 1..25%', maskPct > 1 && maskPct < 25, maskPct.toFixed(2) + '%');
+
+  const lim = iconLimits(res.w, res.h);
+  const raw = components(res.mask, res.w, res.h, lim.minSide, lim.minArea);
+  const comps = mergeComponents(raw, lim.mergeGap);
+
+  check('подписи слиты с иконками', comps.length === expected.length,
+        'найдено ' + comps.length + ' (до слияния ' + raw.length + ')');
+
+  /* Каждая иконка должна попасть на своё место */
+  let matched = 0;
+  comps.forEach(c => {
+    const cx = (c.minX + c.w / 2) * (TD.W / res.w);
+    const cy = (c.minY + c.h / 2) * (TD.H / res.h);
+    const hit = expected.some(e =>
+      Math.abs((e.x + TD.ICON / 2) - cx) < 40 && Math.abs((e.y + TD.ICON / 2 + 5) - cy) < 55);
+    if (hit) matched++;
+  });
+  check('все иконки на своих местах', matched === expected.length, matched + ' из ' + expected.length);
+
+  /* Спрайты непустые */
+  let empty = 0;
+  comps.forEach(c => {
+    const sp = makeSprite(c, res.canvasB, res.w, res.h);
+    const d = sp.canvas.getContext('2d').getImageData(0, 0, sp.w, sp.h).data;
+    let opaque = 0;
+    for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 128) opaque++;
+    if (opaque < 200) empty++;
+  });
+  check('все спрайты непустые', empty === 0, 'пустых ' + empty);
+
+  /* Фон берётся со снимка без иконок */
+  const bgPix = res.canvasA.getContext('2d').getImageData(0, 0, res.w, res.h).data;
+  let colored = 0;
+  for (let i = 0; i < bgPix.length; i += 4) {
+    if (bgPix[i] > 180 && bgPix[i + 1] > 180 && bgPix[i + 2] > 180) colored++;
+  }
+  check('фон чистый, белый только у статус-бара', colored < bgPix.length / 4 * 0.02,
+        'белых пикселей ' + colored);
+
+  log.push('');
+  log.push('пороги: minSide=' + lim.minSide + ' minArea=' + lim.minArea + ' mergeGap=' + lim.mergeGap);
+  log.push('маска: ' + maskPct.toFixed(2) + '%');
+  log.push('масштаб анализа: ' + res.w + 'x' + res.h);
+} catch (err) {
+  fails++;
+  log.push('FAIL исключение: ' + err.message);
+}
+
+document.getElementById('out').textContent =
+  log.join('\n') + '\n\n' + (fails === 0 ? 'RESULT: PASS' : 'RESULT: FAIL (' + fails + ')');
+document.documentElement.dataset.result = fails === 0 ? 'pass' : 'fail';
+</script>
+</body>
+</html>

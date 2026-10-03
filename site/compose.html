@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Shake Icons — экран</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="page-compose">
+
+<div class="topbar">
+  <span class="topbar__title">Shake Icons</span>
+  <button class="btn btn--accent" id="gyro">Включить гироскоп</button>
+  <button class="btn" id="shake">Тряхнуть</button>
+  <button class="btn" id="reset">Вернуть иконки</button>
+  <span class="topbar__spacer"></span>
+  <span id="tilt">β 0° γ 0°</span>
+</div>
+
+<div class="stage">
+  <canvas class="screen" id="screen"></canvas>
+</div>
+
+<div class="hud">
+  <span>Иконок: <span class="hud__stat" id="statIcons">—</span></span>
+  <span>Состояние: <span class="hud__stat" id="statState">на местах</span></span>
+  <span class="hud__label">Сила:</span>
+  <input type="range" id="power" min="30" max="220" value="100">
+  <span class="hud__label">Отклик:</span>
+  <input type="range" id="sens" min="2" max="40" value="14">
+  <span class="topbar__spacer"></span>
+  <span class="hud__label" id="hint">Наклоните телефон — иконки поедут в его сторону</span>
+</div>
+
+<div class="loader" id="loader">Загружаем скриншоты…</div>
+<pre class="fatal" id="fatal" hidden></pre>
+
+<script src="lib.js"></script>
+<script src="compose.js"></script>
+</body>
+</html>
