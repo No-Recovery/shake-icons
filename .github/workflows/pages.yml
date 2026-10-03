@@ -22,15 +22,20 @@ jobs:
     steps:
       - name: Исходники
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
+      # Собираем содержимое site/ в корень ветки gh-pages, не трогая исходный checkout.
       - name: Сборка ветки gh-pages
         run: |
+          set -eu
+          build="$(mktemp -d)"
+          cp -r site/. "$build/"
+          cd "$build"
+          git init -q .
           git config user.name  'github-pages'
           git config user.email 'github-pages@users.noreply.github.com'
-          git checkout --orphan gh-pages
-          git reset
-          git add -f site
-          git commit -m 'Публикация сайта'
-          git push --force origin gh-pages
+          git add -A
+          tree="$(git write-tree)"
+          commit="$(git commit-tree "$tree" -m 'Публикация сайта')"
+          git push --force \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "${commit}:refs/heads/gh-pages"
