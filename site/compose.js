@@ -149,6 +149,7 @@ function build(cleanImg, iconsImg) {
 
   statIcons.textContent = String(icons.length);
   hintEl.textContent = defaultHint();
+  showChrome();
 }
 
 /* ── Гравитация по наклону ───────────────────────────────── */
@@ -672,17 +673,40 @@ canvas.addEventListener('pointermove', e => {
 });
 
 canvas.addEventListener('pointerdown', e => {
+  showChrome();
   canvas.setPointerCapture(e.pointerId);
   release(26);
 });
 
 /* ── Плавающая кнопка и меню ─────────────────────────────── */
 
+/* Панели лежат поверх снимка и мешают им смотреть, поэтому через несколько
+   секунд без действия сами собой прячутся. Кнопка разрешения гироскопа
+   не даёт им скрыться: пока её не нажали, прятать нечего. */
+let hideTimer = 0;
+
+function showChrome() {
+  document.body.classList.remove('is-bare');
+  clearTimeout(hideTimer);
+  hideTimer = setTimeout(() => {
+    if (!gyroBtn.hidden) return;
+    if (!panel.hidden) return;
+    document.body.classList.add('is-bare');
+  }, 3500);
+}
+
 knob.addEventListener('click', () => {
   const open = panel.hidden;
   panel.hidden = !open;
   knob.setAttribute('aria-expanded', open ? 'true' : 'false');
+  showChrome();
 });
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) showChrome();
+});
+
+canvas.addEventListener('pointermove', showChrome);
 
 $('#panelReset').addEventListener('click', reset);
 $('#panelShake').addEventListener('click', () => release(24));

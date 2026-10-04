@@ -3,17 +3,26 @@
 <head>
 <meta charset="utf-8">
 <title>Сквозная проверка compose.js</title>
+<link rel="stylesheet" href="site/styles.css">
 <style>
-  body { font: 13px ui-monospace, Menlo, Consolas, monospace; background: #030712; color: #eee; padding: 16px; }
+  body { font: 13px ui-monospace, Menlo, Consolas, monospace; background: #030712; color: #eee; }
   pre { white-space: pre-wrap; }
-  #screen { width: 180px; border: 1px solid #333; }
+  /*Результат не должен влиять на раскладку экрана*/
+  #out { position: fixed; left: 0; top: 0; z-index: 99; margin: 0; }
   .hide { display: none; }
 </style>
 </head>
-<body>
+<body class="page-compose">
 <pre id="out">запуск…</pre>
 
-<!-- Каркас, который ожидает compose.js -->
+<!-- Экран во всю страницу: раскладка должна быть настоящей -->
+<div class="stage">
+  <div class="stage__inner">
+    <canvas class="screen" id="screen"></canvas>
+  </div>
+</div>
+
+<!-- Остальное ожидает compose.js и не влияет на размеры экрана -->
 <div class="hide">
   <span id="statIcons">—</span>
   <span id="statState">—</span>
@@ -37,7 +46,6 @@
     <input type="range" id="shakeAmt" min="0" max="150" value="100">
     <span id="shakeAmtVal"></span>
   </div>
-  <canvas id="screen"></canvas>
   <div id="loader"></div>
   <pre id="fatal" hidden></pre>
 </div>
@@ -129,6 +137,21 @@ async function run() {
   check('канва в масштабе анализа',
         screen.width === analysis.w && screen.height === analysis.h,
         screen.width + 'x' + screen.height + ', ожидалось ' + analysis.w + 'x' + analysis.h);
+
+  /* Снимок должен занимать весь экран, а не сидеть в рамке с полями */
+  const stage = document.querySelector('.stage');
+  const sr = screen.getBoundingClientRect();
+  const gr = stage.getBoundingClientRect();
+  check('канва во всю ширину экрана',
+        Math.abs(sr.width - gr.width) < 2, sr.width.toFixed(0) + ' из ' + gr.width.toFixed(0));
+  check('канва во всю высоту экрана',
+        Math.abs(sr.height - gr.height) < 2, sr.height.toFixed(0) + ' из ' + gr.height.toFixed(0));
+  check('пропорции снимка сохранены через object-fit',
+        getComputedStyle(screen).objectFit === 'contain',
+        getComputedStyle(screen).objectFit);
+  check('вокруг снимка нет отступов',
+        getComputedStyle(stage).padding === '0px',
+        getComputedStyle(stage).padding);
 
   /* эталон: чистый экран + нарисованные иконки */
   const ref = document.createElement('canvas');
@@ -290,6 +313,16 @@ async function run() {
         icons.filter(i => i.free && i.x > i.homeX).length >= icons.length * 0.8,
         'вправо ' + icons.filter(i => i.free && i.x > i.homeX).length + ' из ' + icons.length);
   gamma = 0;
+
+  /* Панели прячутся, чтобы снимок был виден целиком, и возвращаются по тапу */
+  document.body.classList.add('is-bare');
+  check('панели умеют прятаться',
+        document.body.classList.contains('is-bare'), 'is-bare');
+  try {
+    screen.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 1, bubbles: true }));
+  } catch (e) { /* синтетическое событие без настоящего указателя */ }
+  check('тап по экрану возвращает панели',
+        !document.body.classList.contains('is-bare'), 'is-bare');
 
   /* возврат на места */
   reset();

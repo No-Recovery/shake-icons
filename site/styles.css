@@ -158,21 +158,37 @@ body {
 
 .page-compose {
   height: 100vh;
+  height: -webkit-fill-available;
+  height: 100dvh;
   overflow: hidden;
+  background: #000;
   display: flex;
   flex-direction: column;
 }
 
+/* Верхняя и нижняя панели лежат поверх снимка, а не выдавливают его.
+   Иначе «на весь экран» не получится: примерно четверть высоты уходит
+   под панели, и остаются чёрные поля по бокам. */
 .topbar {
-  flex: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
-  background: #080a11;
-  border-bottom: 1px solid var(--line);
+  padding:
+    calc(8px + env(safe-area-inset-top))
+    calc(12px + env(safe-area-inset-right))
+    8px
+    calc(12px + env(safe-area-inset-left));
+  background: rgba(8, 10, 17, .74);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   font-size: 13px;
   color: var(--ink-dim);
+  transition: opacity .25s ease, transform .25s ease;
 }
 .topbar__title { color: rgba(255, 255, 255, .85); font-weight: 600; }
 .topbar__spacer { margin-left: auto; }
@@ -203,30 +219,34 @@ body {
   position: relative;
   display: grid;
   place-items: center;
-  padding: 14px;
+  padding: 0;
+  background: #000;
 }
 
 .stage__inner {
-  display: grid;
-  place-items: center;
-  max-width: 100%;
-  max-height: 100%;
+  /* Абсолютное позиционирование, а не grid: иначе строка сетки
+     определяется содержимым, и height: 100% у канвы не разрешается —
+     она остаётся исходных пропорций и вылезает за экран. */
+  position: absolute;
+  inset: 0;
 }
 
 .screen {
   display: block;
-  max-width: 100%;
-  max-height: 100%;
-  border-radius: 6px;
-  box-shadow: 0 20px 60px -18px rgba(0, 0, 0, .9);
+  width: 100%;
+  height: 100%;
+  /* Пропорции снимка сохраняются, но он растягивается до краёв экрана.
+     Если использовать max-width/max-height, канва остаётся в рамке
+     с чёрными полями — это и есть то, что нужно убрать. */
+  object-fit: contain;
   touch-action: none;
 }
 
 /* маленькая иконка на самом экране */
 .knob {
   position: absolute;
-  right: 18px;
-  bottom: 18px;
+  right: calc(14px + env(safe-area-inset-right));
+  bottom: calc(14px + env(safe-area-inset-bottom));
   width: 42px;
   height: 42px;
   display: grid;
@@ -296,20 +316,39 @@ body {
 .panel__foot .btn { flex: 1; padding: 6px 8px; font-size: 12px; }
 
 .hud {
-  flex: none;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
   display: flex;
   align-items: center;
   gap: 14px;
   flex-wrap: wrap;
-  padding: 10px 14px;
-  background: #080a11;
-  border-top: 1px solid var(--line);
+  /* справа место под кнопку настроек, чтобы не наезжали друг на друга */
+  padding:
+    8px
+    calc(78px + env(safe-area-inset-right))
+    calc(8px + env(safe-area-inset-bottom))
+    calc(12px + env(safe-area-inset-left));
+  background: rgba(8, 10, 17, .74);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   font-size: 13px;
   color: var(--ink-dim);
+  transition: opacity .25s ease, transform .25s ease;
 }
 .hud__stat { color: var(--ink); font-weight: 600; }
 .hud__label { color: var(--ink-faint); }
-.hud input[type=range] { width: 120px; accent-color: var(--blue); }
+
+/* Панели прячутся, чтобы снимок был видно целиком */
+.page-compose.is-bare .topbar,
+.page-compose.is-bare .hud {
+  opacity: 0;
+  pointer-events: none;
+}
+.page-compose.is-bare .topbar { transform: translateY(-100%); }
+.page-compose.is-bare .hud { transform: translateY(100%); }
 
 .loader, .fatal {
   position: fixed;
@@ -329,6 +368,7 @@ body {
 
 @media (max-width: 520px) {
   .hud { gap: 10px; font-size: 12px; }
-  .panel { right: 12px; bottom: 62px; width: 208px; }
-  .knob { right: 12px; bottom: 12px; }
+  .topbar { font-size: 12px; gap: 8px; }
+  .panel { right: 12px; bottom: calc(64px + env(safe-area-inset-bottom)); width: 208px; }
+  .knob { right: calc(12px + env(safe-area-inset-right)); bottom: calc(12px + env(safe-area-inset-bottom)); }
 }
