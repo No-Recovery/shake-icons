@@ -90,15 +90,20 @@ try {
   $dom = (Invoke-WebRequest -Uri ($url + 'site/compose.html') -UseBasicParsing).Content
   Check 'compose.html отдаётся' ($dom -match 'id="screen"') ''
   Check 'кнопка гироскопа' ($dom -match 'id="gyro"') ''
-  Check 'кнопка тряски' ($dom -match 'id="shake"') ''
-  Check 'кнопка возврата' ($dom -match 'id="reset"') ''
+  Check 'верхней панели нет' ($dom -notmatch 'class="topbar"') ''
+  Check 'нижней панели нет' ($dom -notmatch 'class="hud"') ''
   Check 'меню настроек убрано' ($dom -notmatch 'id="knob"' -and $dom -notmatch 'id="panel"') ''
+
+  $css = Get-Content -LiteralPath (Join-Path $root 'site\styles.css') -Raw
+  Check 'снимок во всю страницу' ($css -match 'position: fixed' -and $css -match 'object-fit: cover') ''
 
   # ── 5. В коде есть гироскоп и гравитация по наклону
   $js = Get-Content -LiteralPath (Join-Path $root 'site\compose.js') -Raw
   Check 'слушает deviceorientation' ($js -match "addEventListener\('deviceorientation'") ''
   Check 'спрашивает разрешение iOS' ($js -match 'requestPermission') ''
-  Check 'сила тряски зависит от наклона' ($js -match 'release\(jerk') ''
+  Check 'тап отпускает иконки' ($js -match 'release\(26\)') ''
+  Check 'тряска экрана убрана' ($js -notmatch 'addShake' -and $js -notmatch 'shakeAmp') ''
+  Check 'иконки не вращаются' ($js -notmatch 'vrot') ''
   Check 'гравитация из beta/gamma' ($js -match 'Math\.sin\(b\)' -and $js -match 'Math\.sin\(g\)') ''
 
   $app = Get-Content -LiteralPath (Join-Path $root 'site\app.js') -Raw

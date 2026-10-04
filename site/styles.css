@@ -156,77 +156,25 @@ body {
 
 /* ── Экран композиции ───────────────────────────────────── */
 
+/* Снимок занимает всю страницу целиком: ни панелей, ни полей, ни рамки.
+   Позиционирование фиксированное, чтобы страница не могла прокрутиться
+   и оставить половину снимка за краем. */
 .page-compose {
-  height: 100vh;
-  height: -webkit-fill-available;
+  position: fixed;
+  inset: 0;
   height: 100dvh;
   overflow: hidden;
   background: #000;
-  display: flex;
-  flex-direction: column;
 }
-
-/* Верхняя и нижняя панели лежат поверх снимка, а не выдавливают его.
-   Иначе «на весь экран» не получится: примерно четверть высоты уходит
-   под панели, и остаются чёрные поля по бокам. */
-.topbar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding:
-    calc(8px + env(safe-area-inset-top))
-    calc(12px + env(safe-area-inset-right))
-    8px
-    calc(12px + env(safe-area-inset-left));
-  background: rgba(8, 10, 17, .74);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  font-size: 13px;
-  color: var(--ink-dim);
-  transition: opacity .25s ease, transform .25s ease;
-}
-.topbar__title { color: rgba(255, 255, 255, .85); font-weight: 600; }
-.topbar__spacer { margin-left: auto; }
-
-.btn {
-  padding: 7px 13px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: rgba(255, 255, 255, .06);
-  color: var(--ink);
-  font-family: var(--font);
-  font-size: 13px;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  white-space: nowrap;
-}
-.btn:active { background: rgba(255, 255, 255, .14); }
-.btn--accent {
-  background: linear-gradient(135deg, #0a84ff, #5e5ce6);
-  border-color: transparent;
-  font-weight: 600;
-}
-.btn[hidden] { display: none; }
 
 .stage {
-  flex: 1;
-  min-height: 0;
-  position: relative;
-  display: grid;
-  place-items: center;
+  position: absolute;
+  inset: 0;
   padding: 0;
   background: #000;
 }
 
 .stage__inner {
-  /* Абсолютное позиционирование, а не grid: иначе строка сетки
-     определяется содержимым, и height: 100% у канвы не разрешается —
-     она остаётся исходных пропорций и вылезает за экран. */
   position: absolute;
   inset: 0;
 }
@@ -241,41 +189,26 @@ body {
   touch-action: none;
 }
 
-.hud {
+/* Кнопка разрешения гироскопа: iOS требует жест, поэтому она висит
+   поверх снимка по центру и исчезает сразу после разрешения. */
+.perm {
   position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
-  /* справа место под кнопку настроек, чтобы не наезжали друг на друга */
-  padding:
-    8px
-    calc(78px + env(safe-area-inset-right))
-    calc(8px + env(safe-area-inset-bottom))
-    calc(12px + env(safe-area-inset-left));
-  background: rgba(8, 10, 17, .74);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  font-size: 13px;
-  color: var(--ink-dim);
-  transition: opacity .25s ease, transform .25s ease;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 40;
+  padding: 14px 22px;
+  border: 0;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .94);
+  color: #04121f;
+  font-family: var(--font);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
-.hud__stat { color: var(--ink); font-weight: 600; }
-.hud__label { color: var(--ink-faint); }
-
-/* Панели прячутся, чтобы снимок был видно целиком */
-.page-compose.is-bare .topbar,
-.page-compose.is-bare .hud {
-  opacity: 0;
-  pointer-events: none;
-}
-.page-compose.is-bare .topbar { transform: translateY(-100%); }
-.page-compose.is-bare .hud { transform: translateY(100%); }
-
+.perm[hidden] { display: none; }
 .loader, .fatal {
   position: fixed;
   inset: 0;
@@ -291,8 +224,3 @@ body {
 }
 .loader[hidden], .fatal[hidden] { display: none; }
 .fatal { color: #ffb4ae; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; }
-
-@media (max-width: 520px) {
-  .hud { gap: 10px; font-size: 12px; }
-  .topbar { font-size: 12px; gap: 8px; }
-}

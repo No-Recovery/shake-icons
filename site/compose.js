@@ -1,11 +1,12 @@
 'use strict';
 
 /*
-  Экран композиции: чистый скриншот + иконки, вырезанные по разнице
-  со вторым снимком. Пока телефон не потрясли, иконки держат свои места.
-  После тряски они отрываются, падают по направлению наклона, бьются
-  о края и друг о друга и укладываются в штабель, а экран вздрагивает
-  от каждого удара.
+  Экран композиции: чистый скриншот во всю страницу + иконки, вырезанные
+  по разнице со вторым снимком. Пока по экрану не ткнули, иконки держат
+  свои места. После тапа они отрываются и живут по-настоящему: падают по
+  направлению наклона, бьются о края и друг о друга, скользят по полу и
+  укладываются в штабель. Никакой тряски экрана и вращения: картинка
+  остаётся на месте, движутся только иконки.
 */
 
 const $ = (s) => document.querySelector(s);
@@ -28,24 +29,21 @@ let bg = null;
 let icons = [];
 
 const power = 1;          /* множитель гравитации */
-const sens = 14;          /* порог тряски, градусы между событиями */
 const bounce = 0.28;      /* упругость удара */
 const friction = 150;     /* трение, px/с² */
-const shakeGain = 1;      /* амплитуда тряски экрана */
+const floorFriction = 900;  /* трение о пол: иконки не скользят по нему */
+const FIXED_DT = 1 / 60;    /* шаг физики, на который считается трение о пол */
 
 const MAX_SPEED = 2600;   /* выше иконки уже не летят, а «каша» */
 const REST_SPEED = 12;    /* медленнее этого — считаем, что иконка лежит */
 const BOUNCE_EPS = 60;    /* слабее удара не отскакиваем, а просто гасим */
 const WAKE_V = 30;        /* удар сильнее этого будит лежащую иконку */
 const CELL = 110;         /* сторона клетки сетки для поиска пар */
-const QUARTER = Math.PI / 2;
 
 let beta = 0;
 let gamma = 0;
 let hasGyro = false;
-let lastB = null;
-let lastG = null;
-let everReleased = false;
+let released = false;
 
 /* ── Загрузка ───────────────────────────────────────────── */
 
@@ -100,8 +98,7 @@ function defaultHint() {
   if (!icons.length) {
     return 'Иконки не найдены — попробуйте скриншоты крупнее или с меньшим сходством.';
   }
-  if (!hasGyro) return 'Тряхните телефон — иконки разлетятся';
-  return 'Тряхните телефон — иконки разлетятся';
+  return 'Коснитесь экрана — иконки оживут';
 }
 
 /* ── Сборка сцены ───────────────────────────────────────── */
@@ -134,19 +131,15 @@ function build(cleanImg, iconsImg) {
       homeY: sp.y,
       vx: 0,
       vy: 0,
-      rot: 0,
-      vrot: 0,
       free: false,
       rest: false,
       touch: false,
-      support: false,
-      still: 0
+      support: false
     };
   });
 
   statIcons.textContent = String(icons.length);
   hintEl.textContent = defaultHint();
-  showChrome();
 }
 
 /* ── Гравитация по наклону ───────────────────────────────── */
@@ -180,28 +173,28 @@ function gravity() {
 
 /* ── Физика ──────────────────────────────────────────────── */
 
+/* Иконки оживают по тапу: срываются со своих мест и получают толчок
+   по направлению наклона. Разброс небольшой — с сильным разбросом
+   иконки сразу рассыпаются в кашу и не собираются в читаемый штабель. */
 function release(strength) {
   const g = gravity();
   const mag = Math.hypot(g.x, g.y) || 1;
-  let changed = false;
 
   for (let i = 0; i < icons.length; i++) {
     const ic = icons[i];
-    if (ic.free) continue;
+    const wasFree = ic.free;
     ic.free = true;
-    changed = true;
-    /* разброс меньше прежнего, иначе иконки сразу рассыпаются в кашу */
-    const s = 70 + Math.random() * 110 + strength * 7;
-    ic.vx = (g.x / mag) * s + (Math.random() - 0.5) * s * 0.45;
-    ic.vy = (g.y / mag) * s + (Math.random() - 0.5) * s * 0.45;
-    ic.vrot = (Math.random() - 0.5) * 2.2;
+    ic.rest = false;
+
+    /* Уже летящие иконки только подталкиваются, а не срываются заново:
+       иначе повторный тап телепортировал бы их обратно на сетку. */
+    const s = (wasFree ? 40 + strength * 4 : 70 + Math.random() * 110 + strength * 7);
+    ic.vx += (g.x / mag) * s + (Math.random() - 0.5) * s * 0.45;
+    ic.vy += (g.y / mag) * s + (Math.random() - 0.5) * s * 0.45;
   }
   wake();
-  if (changed) {
-    everReleased = true;
-    updateState();
-    if (!hasGyro) hintEl.textContent = 'Иконки в движении';
-  }
+  released = true;
+  updateState();
 }
 
 /* Будим всё, что лежало: наклон изменился или пришёл новый удар. */
@@ -216,52 +209,47 @@ function reset() {
     ic.rest = false;
     ic.touch = false;
     ic.support = false;
-    ic.still = 0;
     ic.x = ic.homeX;
     ic.y = ic.homeY;
-    ic.vx = ic.vy = ic.rot = ic.vrot = 0;
+    ic.vx = ic.vy = 0;
   }
-  everReleased = false;
-  shakeAmp = 0;
+  released = false;
   updateState();
   hintEl.textContent = defaultHint();
 }
 
+/* Удары о края экрана. Иконки не крутятся: поворот им не свойственен,
+   и раньше они «вертелись» как раз от этих отскоков. */
 function collide(ic) {
   const m = 3;
   const k = bounce;
-  let hit = 0;
 
   if (ic.x < m) {
     ic.x = m;
     ic.touch = true;
-    if (ic.vx < 0) { hit = Math.max(hit, -ic.vx); ic.vx = -ic.vx * k; }
-    ic.vrot += Math.abs(ic.vy) * 0.0016;
+    if (ic.vx < 0) ic.vx = -ic.vx * k;
   }
   if (ic.x + ic.w > W - m) {
     ic.x = W - m - ic.w;
     ic.touch = true;
-    if (ic.vx > 0) { hit = Math.max(hit, ic.vx); ic.vx = -ic.vx * k; }
-    ic.vrot -= Math.abs(ic.vy) * 0.0016;
+    if (ic.vx > 0) ic.vx = -ic.vx * k;
   }
   if (ic.y < m) {
     ic.y = m;
     ic.touch = true;
-    if (ic.vy < 0) { hit = Math.max(hit, -ic.vy); ic.vy = -ic.vy * k; }
-    ic.vrot -= Math.abs(ic.vx) * 0.0016;
+    if (ic.vy < 0) ic.vy = -ic.vy * k;
   }
   if (ic.y + ic.h > H - m) {
     ic.y = H - m - ic.h;
     ic.touch = true;
     if (ic.vy > 0) {
-      hit = Math.max(hit, ic.vy);
       /* слабое касание не отскакивает, иначе штабель вечно подрагивает */
       ic.vy = ic.vy < BOUNCE_EPS ? 0 : -ic.vy * k;
     }
-    ic.vrot += Math.abs(ic.vx) * 0.0016;
+    /* По полу иконки не скользят: без этого штабель разъезжается
+       в стороны и никогда не собирается. */
+    ic.vx = applyFriction(ic.vx, floorFriction * FIXED_DT);
   }
-
-  if (hit) addShake(Math.min(22, hit * 0.045) * Math.min(1, (ic.w * ic.h) / 9000));
 }
 
 /* Трение покоя: на ровном столе иконки должны останавливаться,
@@ -345,8 +333,6 @@ function resolvePair(a, b) {
     const imp = -(1 + e) * vn / inv;
     if (a.free) { a.vx -= nx * imp; a.vy -= ny * imp; }
     if (b.free) { b.vx += nx * imp; b.vy += ny * imp; }
-    const area = (a.w * a.h + b.w * b.h) / 26000;
-    addShake(Math.min(16, -vn * 0.035) * Math.min(1.4, area));
 
     /* удар выводит из покоя: иначе штабель проглатывал бы падающие иконки */
     if (-vn > WAKE_V) { a.rest = false; b.rest = false; }
@@ -359,9 +345,6 @@ function resolvePair(a, b) {
   const jt = -vt * 0.3 / inv;
   if (a.free) { a.vx -= tx * jt; a.vy -= ty * jt; }
   if (b.free) { b.vx += tx * jt; b.vy += ty * jt; }
-
-  a.still = 0;
-  b.still = 0;
 }
 
 function solveOverlaps() {
@@ -395,22 +378,6 @@ function solveOverlaps() {
   }
 }
 
-/* ── Тряска экрана ───────────────────────────────────────── */
-
-let shakeAmp = 0;
-let shakeT = 0;
-
-function addShake(amount) {
-  const a = amount * shakeGain;
-  if (a > shakeAmp) shakeAmp = a > 26 ? 26 : a;
-}
-
-function stepShake(dt) {
-  shakeT += dt;
-  shakeAmp *= Math.pow(0.02, dt);
-  if (shakeAmp < 0.05) shakeAmp = 0;
-}
-
 /* ── Шаг физики ──────────────────────────────────────────── */
 
 let prevGX = 0;
@@ -419,7 +386,6 @@ let prevGY = 0;
 function step(dt) {
   const g = gravity();
   const drag = Math.pow(0.35, dt);
-  const spin = Math.pow(0.12, dt);
   const fr = friction * dt;
 
   /* Наклон заметно изменился — лежащие иконки должны снова поехать.
@@ -464,19 +430,6 @@ function step(dt) {
 
     ic.x += ic.vx * dt;
     ic.y += ic.vy * dt;
-    ic.rot += ic.vrot * dt;
-    ic.vrot *= spin;
-
-    /* Медленные иконки доворачиваются до прямого угла и прилипают:
-       так штабель выглядит сложенным, а не перемешанным. */
-    if (Math.hypot(ic.vx, ic.vy) < 70) {
-      ic.still += dt;
-      const target = Math.round(ic.rot / QUARTER) * QUARTER;
-      ic.rot += (target - ic.rot) * Math.min(1, dt * 9);
-      if (ic.still > 0.25) ic.vrot *= Math.pow(0.001, dt);
-    } else {
-      ic.still = 0;
-    }
 
     collide(ic);
 
@@ -504,12 +457,11 @@ function step(dt) {
       const ic = icons[i];
       if (!ic.free || !ic.support) continue;
 
-      if (ic.rest) {
-        ic.vx = 0;
-        ic.vy = 0;
-        ic.vrot = 0;
-        continue;
-      }
+if (ic.rest) {
+      ic.vx = 0;
+      ic.vy = 0;
+      continue;
+    }
       const along = ic.vx * ux + ic.vy * uy;
       if (along > 0 && along < creep) {
         ic.vx -= ux * along;
@@ -519,8 +471,6 @@ function step(dt) {
   }
 
   for (let i = 0; i < icons.length; i++) icons[i].support = icons[i].touch;
-
-  stepShake(dt);
 }
 
 /* ── Отрисовка ───────────────────────────────────────────── */
@@ -528,21 +478,8 @@ function step(dt) {
 let drawOrder = [];
 
 function render() {
-  /* Тряска двигает весь экран целиком. Чтобы не показывать пустые края,
-     слегка увеличиваем кадр. */
-  const amp = shakeAmp;
-  const dx = Math.sin(shakeT * 71) * amp;
-  const dy = Math.cos(shakeT * 89) * amp * 0.85;
-  const dr = Math.sin(shakeT * 53) * amp * 0.0004;
-  const zoom = 1 + amp * 0.0016;
-
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, W, H);
-  ctx.save();
-  ctx.translate(W / 2 + dx, H / 2 + dy);
-  ctx.rotate(dr);
-  ctx.scale(zoom, zoom);
-  ctx.translate(-W / 2, -H / 2);
 
   ctx.drawImage(bg, 0, 0);
 
@@ -566,17 +503,12 @@ function render() {
       ctx.shadowBlur = 0;
       ctx.shadowOffsetY = 0;
     }
-    ctx.save();
-    ctx.translate(ic.x + ic.w / 2, ic.y + ic.h / 2);
-    if (ic.rot) ctx.rotate(ic.rot);
-    ctx.drawImage(ic.sprite, -ic.w / 2, -ic.h / 2, ic.w, ic.h);
-    ctx.restore();
+    ctx.drawImage(ic.sprite, ic.x, ic.y, ic.w, ic.h);
   }
 
   ctx.shadowColor = 'transparent';
   ctx.shadowBlur = 0;
   ctx.shadowOffsetY = 0;
-  ctx.restore();
 }
 
 let last = 0;
@@ -607,18 +539,8 @@ function onOrientation(e) {
   const nb = e.beta || 0;
   const ng = e.gamma || 0;
 
-  /* Тряска — резкое изменение наклона между соседними событиями.
-     На готовом экране именно она отпускает иконки. */
-  if (lastB !== null) {
-    const jerk = Math.hypot(nb - lastB, ng - lastG);
-    if (jerk > sens) {
-      release(jerk * 0.5);
-      if (!everReleased) return;
-    }
-  }
-
-  lastB = nb;
-  lastG = ng;
+  /* Наклон задаёт направление силы тяжести. Резкое движение больше
+     ничего не запускает: иконки оживают только по тапу. */
   beta = nb;
   gamma = ng;
   updateTilt();
@@ -646,14 +568,14 @@ async function enableGyro(fromGesture) {
     }
     if (res !== 'granted') {
       gyroBtn.hidden = false;
-      hintEl.textContent = 'Коснитесь «Разрешить гироскоп» — иначе тряска не сработает';
+      hintEl.textContent = 'Коснитесь «Разрешить гироскоп» — без него наклон не сработает';
       return false;
     }
   }
 
   window.addEventListener('deviceorientation', onOrientation);
   gyroBtn.hidden = true;
-  if (!everReleased) hintEl.textContent = defaultHint();
+  if (!released) hintEl.textContent = defaultHint();
   return true;
 }
 
@@ -668,33 +590,11 @@ canvas.addEventListener('pointermove', e => {
   updateTilt();
 });
 
+/* Тап по снимку оживляет иконки и подталкивает их. */
 canvas.addEventListener('pointerdown', e => {
-  showChrome();
-  canvas.setPointerCapture(e.pointerId);
+  try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* указатель мог пропасть */ }
   release(26);
 });
-
-/* ── Прячем панели ───────────────────────────────────────── */
-
-/* Панели лежат поверх снимка и мешают им смотреть, поэтому через несколько
-   секунд без действия сами собой прячутся. Кнопка разрешения гироскопа
-   не даёт им скрыться: пока её не нажали, прятать нечего. */
-let hideTimer = 0;
-
-function showChrome() {
-  document.body.classList.remove('is-bare');
-  clearTimeout(hideTimer);
-  hideTimer = setTimeout(() => {
-    if (!gyroBtn.hidden) return;
-    document.body.classList.add('is-bare');
-  }, 3500);
-}
-
-document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) showChrome();
-});
-
-canvas.addEventListener('pointermove', showChrome);
 
 /* ── Кнопки ─────────────────────────────────────────────── */
 

@@ -121,6 +121,36 @@ function boxBlur(src, w, h, r) {
   return dst;
 }
 
+/* Расширяет маску на r пикселей. Нужен, чтобы иконка не вырезалась
+   ровно по пикселю: снимок и маска считаются с разной точностью,
+   и по краю всегда остаётся светлая кайма в полпикселя. */
+function growMask(src, w, h, r) {
+  if (r <= 0) return Uint8ClampedArray.from(src);
+
+  const n = Math.max(1, Math.round(r));
+  const out = new Uint8ClampedArray(src.length);
+
+  /* Сначала горизонтальные интервалы, потом вертикальные: так
+     расширение обходится двумя проходами вместо двумерного окна. */
+  const tmp = new Uint8ClampedArray(src.length);
+  for (let y = 0; y < h; y++) {
+    const row = y * w;
+    for (let x = 0; x < w; x++) {
+      let sum = 0;
+      for (let k = -n; k <= n; k++) sum += src[row + Math.min(w - 1, Math.max(0, x + k))];
+      tmp[row + x] = sum > 0 ? 255 : 0;
+    }
+  }
+  for (let x = 0; x < w; x++) {
+    for (let y = 0; y < h; y++) {
+      let sum = 0;
+      for (let k = -n; k <= n; k++) sum += tmp[Math.min(h - 1, Math.max(0, y + k)) * w + x];
+      out[y * w + x] = sum > 0 ? 255 : 0;
+    }
+  }
+  return out;
+}
+
 /*
   Сравнивает два скриншота и возвращает:
     w, h      — размер анализа
@@ -149,8 +179,12 @@ function analyze(imgA, imgB, threshold) {
     raw[p] = d > th ? 255 : 0;
   }
 
-  const mask = boxBlur(raw, a.w, a.h, 1);
-  for (let p = 0; p < px; p++) mask[p] = mask[p] > 60 ? 255 : 0;
+  /* Маска снимка размывается и подчищается: тонкие перемычки между
+     иконкой и подписью иначе рвут её на обрезки, а одиночные пиксели
+     шума превращаются в мусорные «иконки». */
+  let mask = growMask(raw, a.w, a.h, GROW);
+  for (let i = 0; i < SMOOTH_PASSES; i++) mask = boxBlur(mask, a.w, a.h, 1);
+  for (let p = 0; p < px; p++) mask[p] = mask[p] > 90 ? 255 : 0;
 
   /* Плотность границ внутри маски: у картинки с иконками их больше */
   const edgeA = edgeDensity(dA, mask, a.w, a.h);
@@ -183,6 +217,11 @@ const MIN_SIDE_FRAC = 0.018;
 const MIN_AREA_FRAC = 0.00022;
 const MERGE_FRAC = 0.015;
 const PAD = 3;
+/* Иконка вырезается по маске, поэтому у неё рваные края. Сначала маска
+   расширяется на полпикселя и сглаживается, потом края подчищаются: так
+   спрайт остаётся цельным, а не обгрызенным по контуру. */
+const GROW = 1.2;         /* на сколько пикселей расширяем маску */
+const SMOOTH_PASSES = 2;  /* сколько раз прогоняем сглаживание по краю */
 const MAX_ICONS = 2000;
 
 /*
@@ -351,11 +390,19 @@ function makeSprite(comp, srcCanvas, boundsW, boundsH) {
     put(lx, ly);
     marks.push(lx, ly);
   }
+  /* Расширяем на круг, а не на крест: у иконок круглые углы, и крест
+     оставляет по диагонали ступеньки, которые видно как обрезки. */
+  const rad = Math.round(GROW);
   for (let i = 0; i < marks.length; i += 2) {
     const lx = marks[i];
     const ly = marks[i + 1];
-    put(lx - 1, ly); put(lx + 1, ly);
-    put(lx, ly - 1); put(lx, ly + 1);
+    for (let dy = -rad; dy <= rad; dy++) {
+      const dy2 = dy * dy;
+      for (let dx = -rad; dx <= rad; dx++) {
+        if (dx * dx + dy2 > rad * rad) continue;
+        put(lx + dx, ly + dy);
+      }
+    }
   }
   mx.putImageData(md, 0, 0);
 

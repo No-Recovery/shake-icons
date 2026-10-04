@@ -35,6 +35,8 @@
   <pre id="fatal" hidden></pre>
 </div>
 
+<!-- Настоящая разметка страницы: снимок один и занимает её целиком -->
+
 <script src="site/lib.js"></script>
 <script src="testdata.js"></script>
 <script>
@@ -149,13 +151,47 @@ async function run() {
 
   const shot = () => screen.getContext('2d').getImageData(0, 0, screen.width, screen.height);
 
+  /* Участок фона, свободный от иконок: по нему видно, что сам кадр
+     не сдвигается и не вздрагивает. */
+  /* Полоса фона выше всех иконок. Обе пробы снимаются одним и тем же
+     render(), поэтому сравнение ловит только сдвиг кадра, а не разницу
+     масштабирования: иконки туда не залетают — они только падают вниз. */
+  const topHome = icons.reduce((m, i) => Math.min(m, i.homeY), Infinity);
+  const bgRows = Math.max(2, Math.floor(topHome / 3));
+
+  const bgProbe = () => {
+    const all = screen.getContext('2d').getImageData(0, 0, screen.width, screen.height);
+    const scale = screen.width / analysis.w;
+    const want = Math.max(1, Math.round(bgRows * scale));
+    const band = document.createElement('canvas');
+    band.width = all.width;
+    band.height = want;
+    band.getContext('2d').putImageData(all, 0, 0, 0, 0, all.width, want, 0, 0);
+
+    const out = document.createElement('canvas');
+    out.width = analysis.w;
+    out.height = bgRows;
+    const ox = out.getContext('2d', { willReadFrequently: true });
+    ox.drawImage(band, 0, 0, out.width, out.height);
+    return ox.getImageData(0, 0, analysis.w, bgRows);
+  };
+
   const d0 = meanDiff(shot(), refData);
   check('в покое совпадает с эталоном', d0 < 12, 'средняя разница ' + d0.toFixed(2));
 
-  /* тряска отпускает иконки */
+  /* Панели сверху и снизу убраны: на странице должен быть только снимок */
+  check('верхней панели нет', !document.querySelector('.topbar'),
+        'topbar=' + !!document.querySelector('.topbar'));
+  check('нижней панели нет', !document.querySelector('.hud'),
+        'hud=' + !!document.querySelector('.hud'));
+  check('страница не прокручивается',
+        getComputedStyle(document.body).overflow === 'hidden',
+        getComputedStyle(document.body).overflow);
+
+  /* тап отпускает иконки */
   document.getElementById('shake').click();
   const st = document.getElementById('statState').textContent;
-  check('тряска отпускает иконки', /в движении 16/.test(st), st);
+  check('тап отпускает иконки', /в движении 16/.test(st), st);
 
   /* иконки двигаются и не совпадают с эталоном */
   advance(0.6);
@@ -193,20 +229,18 @@ async function run() {
   check('без наклона иконки останавливаются', settled === icons.length,
         'остановились ' + settled + ' из ' + icons.length);
 
-  /* Тряска экрана: иконки бьются о низ при наклоне телефона вперёд */
+  /* Никакой тряски экрана: полоса фона выше иконок не должна сдвинуться
+     за все кадры, пока иконки бьются о низ */
   reset();
-  shakeAmp = 0;
+  advance(0.1);
+  const bgBefore = bgProbe();
   beta = 70;
   document.getElementById('shake').click();
-  let peak = 0;
-  for (let i = 0; i < 180; i++) { step(1 / 60); if (shakeAmp > peak) peak = shakeAmp; }
-  check('экран трясётся при ударах', peak > 1,
-        'пиковая амплитуда ' + peak.toFixed(1));
-
-  /* и та же тряска гаснет, а не остаётся навсегда */
+  let bgWorst = 0;
+  for (let i = 0; i < 180; i++) { step(1 / 60); render(); bgWorst = Math.max(bgWorst, meanDiff(bgProbe(), bgBefore)); }
+  check('фон не трясётся при ударах иконок', bgWorst < 0.5,
+        'максимальный сдвиг ' + bgWorst.toFixed(3));
   beta = 0;
-  for (let i = 0; i < 240; i++) step(1 / 60);
-  check('тряска затихает', shakeAmp === 0, 'осталось ' + shakeAmp.toFixed(2));
 
   /* Иконка ложится на иконку, а не проходит сквозь неё */
   reset();
@@ -229,8 +263,6 @@ async function run() {
   check('иконки ложатся друг на друга, не проходят сквозь', worst < 6,
         'наибольшее наложение ' + worst.toFixed(1) + ' px');
 
-  /* Штабель: иконки лежат друг на друге, поэтому «у нижнего края» окажутся
-     не все — проверяем, что они успокоились и собрались ниже середины. */
   /* Штабель: иконки лежат друг на друге, поэтому «у нижнего края» окажутся
      не все — проверяем, что они успокоились и собрались ниже середины. */
   const atRest = icons.filter(i => Math.hypot(i.vx, i.vy) < 1).length;
@@ -258,18 +290,40 @@ async function run() {
   check('штабель без щелей', gap <= 1, 'худшая щель ' + gap.toFixed(1) + ' px');
   beta = 0;
 
-  /* Меню настроек убран, тряска при отпускании иконок тоже */
+  /* Меню настроек убрано */
   const knob = document.getElementById('knob');
   const panel = document.getElementById('panel');
   check('меню настроек удалено', !knob && !panel,
         'knob=' + !!knob + ' panel=' + !!panel);
 
+  /* Иконки не вращаются сами по себе: раньше от ударов появлялся
+     случайный vrot, и картинки «вертелись» вместо физики. */
   reset();
-  shakeAmp = 0;
+  beta = 70;
   document.getElementById('shake').click();
-  advance(1.2);
-  check('встряхивание не трясёт экран', shakeAmp === 0,
-        'амплитуда ' + shakeAmp.toFixed(2));
+  advance(2);
+  const spun = icons.filter(i => i.rot || i.vrot).length;
+  check('иконки не крутятся сами по себе', spun === 0,
+        'вращающихся ' + spun + ' из ' + icons.length);
+  beta = 0;
+
+  /* Иконки должны реально лететь, а не мгновенно замирать на месте */
+  reset();
+  beta = 70;
+  document.getElementById('shake').click();
+  let peakSpeed = 0;
+  let flying = 0;
+  for (let i = 0; i < 90; i++) {
+    step(1 / 60);
+    for (const ic of icons) {
+      const s = Math.hypot(ic.vx, ic.vy);
+      if (s > peakSpeed) peakSpeed = s;
+      if (s > 60) flying++;
+    }
+  }
+  check('иконки разлетаются и летят, а не стоят', peakSpeed > 200 && flying > 20,
+        'пиковая скорость ' + peakSpeed.toFixed(0) + ' px/с, летели ' + flying + ' кадров');
+  beta = 0;
 
   /* небольшой наклон всё ещё сдвигает иконки */
   reset();
@@ -281,15 +335,14 @@ async function run() {
         'вправо ' + icons.filter(i => i.free && i.x > i.homeX).length + ' из ' + icons.length);
   gamma = 0;
 
-  /* Панели прячутся, чтобы снимок был виден целиком, и возвращаются по тапу */
-  document.body.classList.add('is-bare');
-  check('панели умеют прятаться',
-        document.body.classList.contains('is-bare'), 'is-bare');
+  /* тап по самому экрану тоже оживляет иконки */
+  reset();
   try {
     screen.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 1, bubbles: true }));
   } catch (e) { /* синтетическое событие без настоящего указателя */ }
-  check('тап по экрану возвращает панели',
-        !document.body.classList.contains('is-bare'), 'is-bare');
+  check('тап по экрану отпускает иконки',
+        document.getElementById('statState').textContent === 'в движении 16',
+        document.getElementById('statState').textContent);
 
   /* возврат на места */
   reset();

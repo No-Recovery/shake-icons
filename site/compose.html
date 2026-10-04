@@ -8,26 +8,24 @@
 </head>
 <body class="page-compose">
 
-<div class="topbar">
-  <span class="topbar__title">Shake Icons</span>
-  <button class="btn btn--accent" id="gyro">Разрешить гироскоп</button>
-  <button class="btn" id="shake">Тряхнуть</button>
-  <button class="btn" id="reset">Вернуть иконки</button>
-  <span class="topbar__spacer"></span>
-  <span id="tilt">β 0° γ 0°</span>
-</div>
-
+<!-- Снимок занимает всю страницу: никаких панелей сверху и снизу -->
 <div class="stage">
   <div class="stage__inner">
     <canvas class="screen" id="screen"></canvas>
   </div>
 </div>
 
-<div class="hud">
-  <span>Иконок: <span class="hud__stat" id="statIcons">—</span></span>
-  <span>Состояние: <span class="hud__stat" id="statState">на местах</span></span>
-  <span class="hud__label" id="hint">Тряхните телефон — иконки разлетятся</span>
-</div>
+<!-- iOS не даёт гироскоп без жеста, поэтому кнопка разрешения висит
+     поверх снимка и исчезает, как только доступ получен -->
+<button class="perm" id="gyro" hidden>Разрешить гироскоп</button>
+
+<!-- Служебные значения нигде не рисуются, на них завязана физика и стенд -->
+<span hidden id="statIcons">—</span>
+<span hidden id="statState">—</span>
+<span hidden id="tilt"></span>
+<span hidden id="hint"></span>
+<button hidden id="shake"></button>
+<button hidden id="reset"></button>
 
 <div class="loader" id="loader">Загружаем скриншоты…</div>
 <pre class="fatal" id="fatal" hidden></pre>
