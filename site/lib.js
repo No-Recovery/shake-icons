@@ -330,23 +330,49 @@ function makeSprite(comp, srcCanvas, boundsW, boundsH) {
   const mx = maskC.getContext('2d');
   const md = mx.createImageData(w, h);
 
-  for (let i = 0; i < comp.px.length; i++) {
-    const q = comp.px[i];
-    const lx = (q % boundsW) - x0;
-    const ly = ((q / boundsW) | 0) - y0;
-    if (lx < 0 || ly < 0 || lx >= w || ly >= h) continue;
+  const put = (lx, ly) => {
+    if (lx < 0 || ly < 0 || lx >= w || ly >= h) return;
     const o = (ly * w + lx) * 4;
     md.data[o] = 255;
     md.data[o + 1] = 255;
     md.data[o + 2] = 255;
     md.data[o + 3] = 255;
+  };
+
+  /* Маска жёсткая: она собрана по пикселям, прошедшим порог. Расширяем её
+     на пиксель, иначе срезается сглаженный край самого снимка и иконка
+     выглядит выеденной. */
+  const marks = [];
+  for (let i = 0; i < comp.px.length; i++) {
+    const q = comp.px[i];
+    const lx = (q % boundsW) - x0;
+    const ly = ((q / boundsW) | 0) - y0;
+    if (lx < 0 || ly < 0 || lx >= w || ly >= h) continue;
+    put(lx, ly);
+    marks.push(lx, ly);
+  }
+  for (let i = 0; i < marks.length; i += 2) {
+    const lx = marks[i];
+    const ly = marks[i + 1];
+    put(lx - 1, ly); put(lx + 1, ly);
+    put(lx, ly - 1); put(lx, ly + 1);
   }
   mx.putImageData(md, 0, 0);
 
-  cx.filter = 'blur(0.8px)';
+  cx.filter = 'blur(0.6px)';
   cx.globalCompositeOperation = 'destination-in';
   cx.drawImage(maskC, 0, 0);
   cx.filter = 'none';
+
+  /* Размытие маски съедает непрозрачность по краям, и иконка выходит
+     полупрозрачной. Возвращаем её внутри, оставляя сглаживание в один пиксель. */
+  const img = cx.getImageData(0, 0, w, h);
+  const d = img.data;
+  for (let i = 3; i < d.length; i += 4) {
+    const a = d[i];
+    d[i] = a <= 10 ? 0 : a >= 190 ? 255 : Math.round((a - 10) * 255 / 180);
+  }
+  cx.putImageData(img, 0, 0);
 
   return { canvas: c, x: x0, y: y0, w, h };
 }

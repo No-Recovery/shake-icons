@@ -31,21 +31,6 @@
   <button id="gyro"></button>
   <button id="shake"></button>
   <button id="reset"></button>
-  <button id="knob" aria-expanded="false"></button>
-  <div id="panel" hidden>
-    <button id="panelReset"></button>
-    <button id="panelShake"></button>
-    <input type="range" id="power" min="30" max="220" value="100">
-    <span id="powerVal"></span>
-    <input type="range" id="sens" min="2" max="40" value="14">
-    <span id="sensVal"></span>
-    <input type="range" id="bounce" min="0" max="80" value="28">
-    <span id="bounceVal"></span>
-    <input type="range" id="friction" min="0" max="400" value="150">
-    <span id="frictionVal"></span>
-    <input type="range" id="shakeAmt" min="0" max="150" value="100">
-    <span id="shakeAmtVal"></span>
-  </div>
   <div id="loader"></div>
   <pre id="fatal" hidden></pre>
 </div>
@@ -146,8 +131,8 @@ async function run() {
         Math.abs(sr.width - gr.width) < 2, sr.width.toFixed(0) + ' из ' + gr.width.toFixed(0));
   check('канва во всю высоту экрана',
         Math.abs(sr.height - gr.height) < 2, sr.height.toFixed(0) + ' из ' + gr.height.toFixed(0));
-  check('пропорции снимка сохранены через object-fit',
-        getComputedStyle(screen).objectFit === 'contain',
+  check('пропорции снимка сохранены при заполнении экрана',
+        getComputedStyle(screen).objectFit === 'cover',
         getComputedStyle(screen).objectFit);
   check('вокруг снимка нет отступов',
         getComputedStyle(stage).padding === '0px',
@@ -273,36 +258,18 @@ async function run() {
   check('штабель без щелей', gap <= 1, 'худшая щель ' + gap.toFixed(1) + ' px');
   beta = 0;
 
-  /* Меню настроек открывается и ползунки влияют на физику на лету */
+  /* Меню настроек убран, тряска при отпускании иконок тоже */
   const knob = document.getElementById('knob');
   const panel = document.getElementById('panel');
-  knob.click();
-  check('меню открывается по маленькой иконке',
-        panel.hidden === false && knob.getAttribute('aria-expanded') === 'true',
-        'hidden=' + panel.hidden);
-
-  const setRange = (id, v) => {
-    const el = document.getElementById(id);
-    el.value = String(v);
-    el.dispatchEvent(new Event('input'));
-  };
+  check('меню настроек удалено', !knob && !panel,
+        'knob=' + !!knob + ' panel=' + !!panel);
 
   reset();
-  setRange('friction', 400);
+  shakeAmp = 0;
   document.getElementById('shake').click();
-  advance(3);
-  const braked = icons.filter(i => Math.hypot(i.vx, i.vy) < 1).length;
-  setRange('friction', 150);
-  check('ползунок липкости меняет физику сразу', braked >= icons.length * 0.8,
-        'остановились ' + braked + ' из ' + icons.length);
-
-  const savedPower = power;
-  setRange('power', 220);
-  check('ползунок силы меняет гравитацию сразу', power === 2.2, 'power=' + power);
-  setRange('power', savedPower * 100);
-
-  knob.click();
-  check('меню закрывается повторным нажатием', panel.hidden === true, 'hidden=' + panel.hidden);
+  advance(1.2);
+  check('встряхивание не трясёт экран', shakeAmp === 0,
+        'амплитуда ' + shakeAmp.toFixed(2));
 
   /* небольшой наклон всё ещё сдвигает иконки */
   reset();

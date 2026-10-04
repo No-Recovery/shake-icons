@@ -21,20 +21,17 @@ const statState = $('#statState');
 const tiltEl = $('#tilt');
 const hintEl = $('#hint');
 const gyroBtn = $('#gyro');
-const knob = $('#knob');
-const panel = $('#panel');
 
 let W = 0;
 let H = 0;
 let bg = null;
 let icons = [];
 
-/* Настройки живут в панели и применяются на лету. */
-let power = 1;        /* множитель гравитации, 0.3..2.2 */
-let sens = 14;        /* порог тряски, градусы между событиями */
-let bounce = 0.28;    /* упругость удара, 0..0.8 */
-let friction = 150;   /* трение, px/с² */
-let shakeGain = 1;    /* амплитуда тряски экрана */
+const power = 1;          /* множитель гравитации */
+const sens = 14;          /* порог тряски, градусы между событиями */
+const bounce = 0.28;      /* упругость удара */
+const friction = 150;     /* трение, px/с² */
+const shakeGain = 1;      /* амплитуда тряски экрана */
 
 const MAX_SPEED = 2600;   /* выше иконки уже не летят, а «каша» */
 const REST_SPEED = 12;    /* медленнее этого — считаем, что иконка лежит */
@@ -202,7 +199,6 @@ function release(strength) {
   wake();
   if (changed) {
     everReleased = true;
-    addShake(14);
     updateState();
     if (!hasGyro) hintEl.textContent = 'Иконки в движении';
   }
@@ -678,7 +674,7 @@ canvas.addEventListener('pointerdown', e => {
   release(26);
 });
 
-/* ── Плавающая кнопка и меню ─────────────────────────────── */
+/* ── Прячем панели ───────────────────────────────────────── */
 
 /* Панели лежат поверх снимка и мешают им смотреть, поэтому через несколько
    секунд без действия сами собой прячутся. Кнопка разрешения гироскопа
@@ -690,44 +686,15 @@ function showChrome() {
   clearTimeout(hideTimer);
   hideTimer = setTimeout(() => {
     if (!gyroBtn.hidden) return;
-    if (!panel.hidden) return;
     document.body.classList.add('is-bare');
   }, 3500);
 }
-
-knob.addEventListener('click', () => {
-  const open = panel.hidden;
-  panel.hidden = !open;
-  knob.setAttribute('aria-expanded', open ? 'true' : 'false');
-  showChrome();
-});
 
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) showChrome();
 });
 
 canvas.addEventListener('pointermove', showChrome);
-
-$('#panelReset').addEventListener('click', reset);
-$('#panelShake').addEventListener('click', () => release(24));
-
-function bindRange(id, apply, format) {
-  const el = $('#' + id);
-  const out = $('#' + id + 'Val');
-  const run = () => {
-    const v = Number(el.value);
-    apply(v);
-    out.textContent = format(v);
-  };
-  el.addEventListener('input', run);
-  run();
-}
-
-bindRange('power', v => (power = v / 100), v => (v / 100).toFixed(2));
-bindRange('sens', v => (sens = v), v => String(v));
-bindRange('bounce', v => (bounce = v / 100), v => (v / 100).toFixed(2));
-bindRange('friction', v => (friction = v), v => String(v));
-bindRange('shakeAmt', v => (shakeGain = v / 100), v => (v / 100).toFixed(2));
 
 /* ── Кнопки ─────────────────────────────────────────────── */
 

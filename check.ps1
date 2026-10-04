@@ -92,7 +92,7 @@ try {
   Check 'кнопка гироскопа' ($dom -match 'id="gyro"') ''
   Check 'кнопка тряски' ($dom -match 'id="shake"') ''
   Check 'кнопка возврата' ($dom -match 'id="reset"') ''
-  Check 'слайдер силы' ($dom -match 'id="power"') ''
+  Check 'меню настроек убрано' ($dom -notmatch 'id="knob"' -and $dom -notmatch 'id="panel"') ''
 
   # ── 5. В коде есть гироскоп и гравитация по наклону
   $js = Get-Content -LiteralPath (Join-Path $root 'site\compose.js') -Raw
