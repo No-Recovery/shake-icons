@@ -2,16 +2,17 @@
 
 /*
   Экран композиции: чистый скриншот во всю страницу + иконки, вырезанные
-  по разнице со вторым снимком. Пока по экрану не ткнули, иконки держат
-  свои места. После тапа они отрываются и живут по-настоящему: падают по
-  направлению наклона, бьются о края и друг о друга, скользят по полу и
-  укладываются в штабель. Никакой тряски экрана и вращения: картинка
-  остаётся на месте, движутся только иконки.
+  по разнице со вторым снимком. Пока телефон не потрясли, иконки держат
+  свои места. Тряска их отпускает, и дальше они живут по-настоящему: падают
+  по направлению наклона, крутятся от ударов, бьются о края и друг о друга,
+  вылезают за края экрана и укладываются в штабель. Картинка остаётся на
+  месте — тряски экрана нет. Тап по экрану собирает иконки обратно.
 */
 
 const $ = (s) => document.querySelector(s);
 
 const DEG = Math.PI / 180;
+const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
 const canvas = $('#screen');
@@ -29,21 +30,50 @@ let bg = null;
 let icons = [];
 
 const power = 1;          /* множитель гравитации */
+const sens = 12;          /* порог тряски, градусы между событиями */
 const bounce = 0.28;      /* упругость удара */
-const friction = 150;     /* трение, px/с² */
-const floorFriction = 900;  /* трение о пол: иконки не скользят по нему */
-const FIXED_DT = 1 / 60;    /* шаг физики, на который считается трение о пол */
+const friction = 60;      /* трение, px/с²: чем меньше, тем дольше скользят */
+const floorFriction = 90; /* трение о пол: иначе штабель разъезжается */
+const FIXED_DT = 1 / 60;  /* шаг физики, на который считается трение о пол */
 
+/* По видео с твиком иконки у края экрана не отскакивают от невидимой стены,
+   а спокойно уезжают за край наполовину и дальше. Поэтому держим их
+   мягкие границы: за край можно вылезти, но не вылететь совсем. */
+const OVERHANG = 0.5;     /* насколько иконка может вылезти за край, доля */
+
+/* Вращение: в ролике иконки крутятся всё время полёта и прилипают к
+   стенке. Угловая скорость растёт от удара, а трение по краям и по
+   соседям её гасит. */
+const spinKick = 9;       /* начальная раскрутка при отпускании, рад/с */
+const spinFromHit = 0.55; /* доля касательной скорости, переходящая во вращение */
+const spinFriction = 1.4; /* торможение вращения, 1/с */
+const maxSpin = 14;       /* быстрее иконка превращается в кашу */
+
+/* Возврат на места по тапу: в ролике иконки примерно за 0.7 с собираются
+   обратно в сетку и там уже не двигаются. */
+const RETURN_TIME = 0.7;  /* длительность возврата, с */
+
+/* Если иконки осели и сами не идут, тоже собираем их: лежащий штабель
+   пополам с сеткой выглядит неправильно. Тап возвращает сразу. */
+let SETTLE_TIME = 6;     /* сколько секунд штабель лежит перед сборкой, с */
+
+/* Постоянная часть силы тяжести. Экран всегда висит вертикально, поэтому даже
+   при нулевом наклоне иконки медленно сползают вниз, а не замирают. */
+const BASE_G = 0.22;
 const MAX_SPEED = 2600;   /* выше иконки уже не летят, а «каша» */
 const REST_SPEED = 12;    /* медленнее этого — считаем, что иконка лежит */
 const BOUNCE_EPS = 60;    /* слабее удара не отскакиваем, а просто гасим */
 const WAKE_V = 30;        /* удар сильнее этого будит лежащую иконку */
+const SLEEP_TIME = 0.25; /* сколько секунд почти без движения — иконка спит */
+const SLEEP_V = 80;      /* медленнее этого — иконка считается уснувшей */
 const CELL = 110;         /* сторона клетки сетки для поиска пар */
 
 let beta = 0;
 let gamma = 0;
 let hasGyro = false;
 let released = false;
+let lastB = null;
+let lastG = null;
 
 /* ── Загрузка ───────────────────────────────────────────── */
 
@@ -96,9 +126,9 @@ async function main() {
 
 function defaultHint() {
   if (!icons.length) {
-    return 'Иконки не найдены — попробуйте скриншоты крупнее или с меньшим сходством.';
+    return 'РРєРѕРЅРєРё РЅРµ РЅР°Р№РґРµРЅС‹ вЂ” РїРѕРїСЂРѕР±СѓР№С‚Рµ СЃРєСЂРёРЅС€РѕС‚С‹ РєСЂСѓРїРЅРµРµ РёР»Рё СЃ РјРµРЅСЊС€РёРј СЃС…РѕРґСЃС‚РІРѕРј.';
   }
-  return 'Коснитесь экрана — иконки оживут';
+  return 'Тряхните телефон — иконки разлетятся, тап соберёт их обратно';
 }
 
 /* ── Сборка сцены ───────────────────────────────────────── */
@@ -127,18 +157,26 @@ function build(cleanImg, iconsImg) {
       y: sp.y,
       w: sp.w,
       h: sp.h,
-      homeX: sp.x,
+homeX: sp.x,
       homeY: sp.y,
       vx: 0,
       vy: 0,
+      rot: 0,
+      vrot: 0,
       free: false,
       rest: false,
       touch: false,
-      support: false
+      support: false,
+      /* сборка обратно: доля пути, оставшаяся до исходного места */
+      back: 1,
+      rot0: 0,
+      /* сколько секунд иконка почти не двигается */
+      slowT: 0
     };
   });
 
   statIcons.textContent = String(icons.length);
+  updateState();
   hintEl.textContent = defaultHint();
 }
 
@@ -149,12 +187,16 @@ function screenAngle() {
   return typeof a === 'number' ? a : (window.orientation || 0);
 }
 
+/* Направление силы тяжести задаёт наклон телефона. Но телефон может лежать
+   плашмя, и тогда наклон равен нулю — иконки перестали бы двигаться совсем.
+   Поэтому добавляем постоянную тягу вниз: по вертикали экран всегда «висит»,
+   и картинка никогда не замирает мёртво. */
 function gravity() {
   const b = clamp(beta, -90, 90) * DEG;
   const g = clamp(gamma, -90, 90) * DEG;
 
   let gx = Math.sin(g);
-  let gy = Math.sin(b);
+  let gy = Math.sin(b) * 0.85 + BASE_G;
 
   const a = screenAngle() * DEG;
   if (a) {
@@ -166,6 +208,11 @@ function gravity() {
     gy = ny;
   }
 
+  /* длина не должна превышать единицу: на двойном наклоне иконки
+     иначе улетают с огромной скоростью */
+  const len = Math.hypot(gx, gy);
+  if (len > 1) { gx /= len; gy /= len; }
+
   /* 900 даёт терминальную скорость ≈870 px/с: экран пролетается за ~0.8 с */
   const K = 900 * power;
   return { x: gx * K, y: gy * K };
@@ -173,9 +220,10 @@ function gravity() {
 
 /* ── Физика ──────────────────────────────────────────────── */
 
-/* Иконки оживают по тапу: срываются со своих мест и получают толчок
-   по направлению наклона. Разброс небольшой — с сильным разбросом
-   иконки сразу рассыпаются в кашу и не собираются в читаемый штабель. */
+/* РРєРѕРЅРєРё РѕР¶РёРІР°СЋС‚ РїРѕ С‚СЂСЏСЃРєРµ С‚РµР»РµС„РѕРЅР°: СЃСЂС‹РІР°СЋС‚СЃСЏ СЃРѕ СЃРІРѕРёС… РјРµСЃС‚ Рё РїРѕР»СѓС‡Р°СЋС‚
+   толчок по направлению наклона плюс раскрутку. Разброс небольшой — с
+   сильным разбросом иконки сразу рассыпаются в кашу и не собираются
+   в читаемый штабель. */
 function release(strength) {
   const g = gravity();
   const mag = Math.hypot(g.x, g.y) || 1;
@@ -185,12 +233,17 @@ function release(strength) {
     const wasFree = ic.free;
     ic.free = true;
     ic.rest = false;
+    ic.back = 1;
+    ic.slowT = 0;
 
     /* Уже летящие иконки только подталкиваются, а не срываются заново:
-       иначе повторный тап телепортировал бы их обратно на сетку. */
+       иначе повторная тряска телепортировала бы их обратно на сетку. */
     const s = (wasFree ? 40 + strength * 4 : 70 + Math.random() * 110 + strength * 7);
     ic.vx += (g.x / mag) * s + (Math.random() - 0.5) * s * 0.45;
     ic.vy += (g.y / mag) * s + (Math.random() - 0.5) * s * 0.45;
+
+    /* В ролике иконки крутятся с самого начала полёта. */
+    ic.vrot += (Math.random() - 0.5) * 2 * spinKick;
   }
   wake();
   released = true;
@@ -209,47 +262,117 @@ function reset() {
     ic.rest = false;
     ic.touch = false;
     ic.support = false;
+    ic.back = 1;
+    ic.slowT = 0;
     ic.x = ic.homeX;
     ic.y = ic.homeY;
     ic.vx = ic.vy = 0;
+    ic.rot = 0;
+    ic.vrot = 0;
   }
+  still = 0;
+  settling = false;
   released = false;
   updateState();
   hintEl.textContent = defaultHint();
 }
 
-/* Удары о края экрана. Иконки не крутятся: поворот им не свойственен,
-   и раньше они «вертелись» как раз от этих отскоков. */
+/* Возврат на места по тапу: в ролике иконки не телепортируются, а за
+   RETURN_TIME плавно уезжают на свои позиции, вставая ровно, как стояли.
+   Поворот при этом домотается до ближайшего целого оборота. */
+function home() {
+  let any = false;
+  for (let i = 0; i < icons.length; i++) {
+    const ic = icons[i];
+    if (!ic.free || ic.back < 1) continue;
+    any = true;
+    ic.back = 0;
+    ic.slowT = 0;
+    /* берём ближайший полный оборот, чтобы не делать лишний круг */
+    ic.rot0 = Math.round(ic.rot / TAU) * TAU;
+    ic.rest = false;
+  }
+  if (!any) return;
+  still = 0;
+  settling = true;
+  updateState();
+  hintEl.textContent = defaultHint();
+}
+
+/* РРєРѕРЅРєР°, С‚СЂСѓС‰Р°СЏСЃСЏ Рѕ Р±РѕРєРѕРІСѓСЋ СЃС‚РµРЅСѓ, С‚РµСЂСЏРµС‚ СЃРєРѕСЂРѕСЃС‚СЊ РїРѕ РІРµСЂС‚РёРєР°Р»Рё.
+   Без этого иконка, вылезшая наполовину за край, бесконечно соскальзывает
+   по стене: её подпирает иконка снизу, та выталкивает наружу, и она
+   возвращается — штабель дрожит вечно и никогда не успокаивается. */
+const wallFriction = 0.6;  /* доля трения о пол для боковых стен */
+
+/* Удары о края экрана. В ролике иконка не отскакивает от невидимой стены
+   на самом краю: она выезжает за границу примерно наполовину, и края
+   экрана её срезают. Габариты поворота в расчёт не берём — иначе иконка,
+   крутящаяся у стены, каждый кадр прыгала бы на разную глубину. */
 function collide(ic) {
-  const m = 3;
   const k = bounce;
 
-  if (ic.x < m) {
-    ic.x = m;
+  /* Мягкие границы: за край иконка выезжает, но не исчезает совсем.
+     Чем быстрее она летит, тем дальше может вылезти, а чем медленнее —
+     тем меньше ей остаётся снаружи. Так иконка может на лету вылететь
+     за край наполовину (его срезает край экрана), но не может повиснуть
+     там навсегда: её вечно выталкивал бы штабель, и картинка бы дрожала. */
+  const allow = OVERHANG * clamp(Math.hypot(ic.vx, ic.vy) / 500, 0, 1);
+  const minX = -ic.w * allow;
+  const maxX = W - ic.w + ic.w * allow;
+  const minY = -ic.h * allow;
+  /* пол — это низ экрана: по нему иконки собираются в штабель */
+  const floor = H - ic.h;
+  const wallFr = floorFriction * FIXED_DT * wallFriction;
+
+  if (ic.x < minX) {
+    ic.x = minX;
     ic.touch = true;
-    if (ic.vx < 0) ic.vx = -ic.vx * k;
+    if (ic.vx < 0) {
+      ic.vx = -ic.vx * k;
+      /* удар о вертикальную стену подкручивает вращение */
+      ic.vrot += ic.vy / Math.max(1, ic.h) * spinFromHit * 4;
+    }
+    ic.vy = applyFriction(ic.vy, wallFr);
+    ic.vrot *= 1 - Math.min(1, wallFr * spinFriction * 0.6);
   }
-  if (ic.x + ic.w > W - m) {
-    ic.x = W - m - ic.w;
+  if (ic.x > maxX) {
+    ic.x = maxX;
     ic.touch = true;
-    if (ic.vx > 0) ic.vx = -ic.vx * k;
+    if (ic.vx > 0) {
+      ic.vx = -ic.vx * k;
+      ic.vrot -= ic.vy / Math.max(1, ic.h) * spinFromHit * 4;
+    }
+    ic.vy = applyFriction(ic.vy, wallFr);
+    ic.vrot *= 1 - Math.min(1, wallFr * spinFriction * 0.6);
   }
-  if (ic.y < m) {
-    ic.y = m;
+  if (ic.y < minY) {
+    ic.y = minY;
     ic.touch = true;
-    if (ic.vy < 0) ic.vy = -ic.vy * k;
+    if (ic.vy < 0) {
+      ic.vy = -ic.vy * k;
+      ic.vrot -= ic.vx / Math.max(1, ic.w) * spinFromHit * 4;
+    }
   }
-  if (ic.y + ic.h > H - m) {
-    ic.y = H - m - ic.h;
+  if (ic.y > floor) {
+    ic.y = floor;
     ic.touch = true;
     if (ic.vy > 0) {
       /* слабое касание не отскакивает, иначе штабель вечно подрагивает */
       ic.vy = ic.vy < BOUNCE_EPS ? 0 : -ic.vy * k;
+      /* удар о пол подбрасывает вращение */
+      ic.vrot += ic.vx / Math.max(1, ic.w) * spinFromHit * 4;
     }
     /* По полу иконки не скользят: без этого штабель разъезжается
        в стороны и никогда не собирается. */
     ic.vx = applyFriction(ic.vx, floorFriction * FIXED_DT);
+    /* и по полу же гасится вращение — трутся в пыли */
+    ic.vrot *= 1 - Math.min(1, floorFriction * FIXED_DT * spinFriction * 0.6);
   }
+
+  /* вращение не должно раскручиваться до бесконечности */
+  if (ic.vrot > maxSpin) ic.vrot = maxSpin;
+  if (ic.vrot < -maxSpin) ic.vrot = -maxSpin;
 }
 
 /* Трение покоя: на ровном столе иконки должны останавливаться,
@@ -284,10 +407,14 @@ function gridBuild() {
 }
 
 /* Раскладывает иконки по клеткам: иконка, долетевшая до другой, ложится
-   сверху и больше не проходит сквозь неё. Иконки на своих местах —
+   СЃРІРµСЂС…Сѓ Рё Р±РѕР»СЊС€Рµ РЅРµ РїСЂРѕС…РѕРґРёС‚ СЃРєРІРѕР·СЊ РЅРµС‘. РРєРѕРЅРєРё РЅР° СЃРІРѕРёС… РјРµСЃС‚Р°С… вЂ”
    бесконечная масса: их не сдвинуть, на них можно упасть. */
 function resolvePair(a, b) {
   if (!a.free && !b.free) return;
+
+  /* РРєРѕРЅРєР°, РєРѕС‚РѕСЂР°СЏ СѓР¶Рµ СЃРѕР±СЂР°РЅР° РѕР±СЂР°С‚РЅРѕ РЅР° РјРµСЃС‚Рѕ, Р±РѕР»СЊС€Рµ РЅРµ СѓС‡Р°СЃС‚РІСѓРµС‚
+     в раскладке: её путь задан напрямую, иначе соседи сбивали бы её. */
+  if (a.back < 1 || b.back < 1) return;
 
   const ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
   if (ox <= 0) return;
@@ -336,6 +463,7 @@ function resolvePair(a, b) {
 
     /* удар выводит из покоя: иначе штабель проглатывал бы падающие иконки */
     if (-vn > WAKE_V) { a.rest = false; b.rest = false; }
+    a.back = b.back = 1;
   }
 
   /* гасим скольжение вдоль поверхности — иначе штабель разъезжается */
@@ -345,6 +473,12 @@ function resolvePair(a, b) {
   const jt = -vt * 0.3 / inv;
   if (a.free) { a.vx -= tx * jt; a.vy -= ty * jt; }
   if (b.free) { b.vx += tx * jt; b.vy += ty * jt; }
+
+  /* Касательное скольжение раскручивает иконки: в ролике они вертятся
+     всё время, пока толкаются друг о друга. */
+  const spin = -vt * spinFromHit / inv;
+  if (a.free) a.vrot += spin * (Math.min(a.w, a.h) / Math.max(b.w, b.h));
+  if (b.free) b.vrot -= spin * (Math.min(b.w, b.h) / Math.max(a.w, a.h));
 }
 
 function solveOverlaps() {
@@ -382,6 +516,8 @@ function solveOverlaps() {
 
 let prevGX = 0;
 let prevGY = 0;
+let still = 0;       /* сколько секунд штабель лежит, ничего не делая */
+let settling = false;
 
 function step(dt) {
   const g = gravity();
@@ -395,13 +531,40 @@ function step(dt) {
   prevGY = g.y;
 
   /* Порог засыпания должен быть выше прироста скорости за один кадр,
-     иначе иконка, упёршаяся в пол, никогда не остановится. */
-  const restV = Math.max(REST_SPEED, Math.hypot(g.x, g.y) * dt * 2.5);
+     иначе иконка, упёршаяся в пол, никогда не остановится.
+     SLEEP_V нужен и для зажатых в штабеле иконок: соседи слегка
+     подталкивают их туда-сюда на несколько десятков px/с, и без
+     запаса по порогу они не уснут никогда. */
+  const restV = Math.max(REST_SPEED, SLEEP_V, Math.hypot(g.x, g.y) * dt * 2.5);
 
   for (let i = 0; i < icons.length; i++) {
     const ic = icons[i];
     if (!ic.free) continue;
     ic.touch = false;
+
+    /* Сборка обратно на места: тап отменил физику, и иконка сама
+       доезжает до исходной точки за RETURN_TIME. */
+    if (ic.back < 1) {
+      ic.back = Math.min(1, ic.back + dt / RETURN_TIME);
+      const e = 1 - Math.pow(1 - ic.back, 3);
+      ic.x += (ic.homeX - ic.x) * e;
+      ic.y += (ic.homeY - ic.y) * e;
+      ic.rot = ic.rot0 * e;
+      ic.vrot = 0;
+      if (ic.back >= 1) {
+        ic.x = ic.homeX;
+        ic.y = ic.homeY;
+        ic.rot = 0;
+        ic.rest = false;
+        ic.free = false;
+        ic.vx = ic.vy = 0;
+        if (settling) {
+          settling = false;
+          updateState();
+        }
+      }
+      continue;
+    }
 
     let slow = false;
 
@@ -428,24 +591,32 @@ function step(dt) {
       slow = sp < restV;
     }
 
+    /* вращение: раскручивается ударами и медленно затихает само */
+    ic.vrot *= Math.max(0, 1 - spinFriction * dt);
+    if (ic.rest) ic.vrot *= Math.max(0, 1 - spinFriction * 2 * dt);
+    ic.rot += ic.vrot * dt;
+
     ic.x += ic.vx * dt;
     ic.y += ic.vy * dt;
 
     collide(ic);
 
-    /* Засыпаем, только если под ноги есть опора: иначе иконка зависнет
-       в воздухе. support — это touch с прошлого кадра: раскладку пар
-       мы делаем ниже, поэтому в этом же кадре она ещё неизвестна. */
+    /* Засыпаем, когда под ноги есть опора. Если опоры нет, но иконка всё
+       равно почти не двигается — она зажата в штабеле, и без этого
+       правила такие иконки никогда не успокоились бы. Замирать в
+       воздухе им не грозит: там скорость растёт сразу. */
     if (slow) {
-      if (ic.support) ic.rest = true;
-    } else if (ic.rest && !ic.support) {
-      ic.rest = false;
+      ic.slowT += dt;
+      if (ic.support || ic.slowT > SLEEP_TIME) ic.rest = true;
+    } else {
+      ic.slowT = 0;
+      if (ic.rest && !ic.support) ic.rest = false;
     }
   }
 
   solveOverlaps();
 
-  /* Последнее слово — после раскладки пар. Иконка, упёршаяся в опору,
+  /* РџРѕСЃР»РµРґРЅРµРµ СЃР»РѕРІРѕ вЂ” РїРѕСЃР»Рµ СЂР°СЃРєР»Р°РґРєРё РїР°СЂ. РРєРѕРЅРєР°, СѓРїС‘СЂС€Р°СЏСЃСЏ РІ РѕРїРѕСЂСѓ,
      не должна набирать скорость вдавливания: иначе штабель понемногу
      разгоняется сам у себя и никогда не успокаивается. */
   const gl = Math.hypot(g.x, g.y);
@@ -457,11 +628,11 @@ function step(dt) {
       const ic = icons[i];
       if (!ic.free || !ic.support) continue;
 
-if (ic.rest) {
-      ic.vx = 0;
-      ic.vy = 0;
-      continue;
-    }
+      if (ic.rest) {
+        ic.vx = 0;
+        ic.vy = 0;
+        continue;
+      }
       const along = ic.vx * ux + ic.vy * uy;
       if (along > 0 && along < creep) {
         ic.vx -= ux * along;
@@ -471,6 +642,24 @@ if (ic.rest) {
   }
 
   for (let i = 0; i < icons.length; i++) icons[i].support = icons[i].touch;
+
+  /* Штабель осел и больше не движется — собираем иконки на места,
+     иначе они навсегда останутся лежать сеткой внизу. */
+  let busy = false;
+  let flying = 0;
+  for (let i = 0; i < icons.length; i++) {
+    const ic = icons[i];
+    if (!ic.free) continue;
+    flying++;
+    if (ic.back >= 1 && !ic.rest) busy = true;
+  }
+
+  if (busy || flying === 0) {
+    still = 0;
+  } else {
+    still += dt;
+    if (still > SETTLE_TIME) home();
+  }
 }
 
 /* ── Отрисовка ───────────────────────────────────────────── */
@@ -483,7 +672,7 @@ function render() {
 
   ctx.drawImage(bg, 0, 0);
 
-  /* Иконки на местах — часть экрана, рисуем первыми. Летящие сортируем
+  /* РРєРѕРЅРєРё РЅР° РјРµСЃС‚Р°С… вЂ” С‡Р°СЃС‚СЊ СЌРєСЂР°РЅР°, СЂРёСЃСѓРµРј РїРµСЂРІС‹РјРё. Р›РµС‚СЏС‰РёРµ СЃРѕСЂС‚РёСЂСѓРµРј
      снизу вверх: та, что ниже, рисуется поверх и выглядит лежащей сверху. */
   drawOrder.length = 0;
   for (let i = 0; i < icons.length; i++) if (!icons[i].free) drawOrder.push(icons[i]);
@@ -503,7 +692,18 @@ function render() {
       ctx.shadowBlur = 0;
       ctx.shadowOffsetY = 0;
     }
-    ctx.drawImage(ic.sprite, ic.x, ic.y, ic.w, ic.h);
+
+    /* Поворот вокруг центра: в ролике иконки крутятся, и центр при
+       этом остаётся на месте. */
+    if (ic.rot) {
+      ctx.save();
+      ctx.translate(ic.x + ic.w / 2, ic.y + ic.h / 2);
+      ctx.rotate(ic.rot);
+      ctx.drawImage(ic.sprite, -ic.w / 2, -ic.h / 2, ic.w, ic.h);
+      ctx.restore();
+    } else {
+      ctx.drawImage(ic.sprite, ic.x, ic.y, ic.w, ic.h);
+    }
   }
 
   ctx.shadowColor = 'transparent';
@@ -539,8 +739,15 @@ function onOrientation(e) {
   const nb = e.beta || 0;
   const ng = e.gamma || 0;
 
-  /* Наклон задаёт направление силы тяжести. Резкое движение больше
-     ничего не запускает: иконки оживают только по тапу. */
+  /* Наклон задаёт направление силы тяжести. А резкое движение телефона —
+   это тряска, и именно она отпускает иконки. */
+  if (lastB !== null) {
+    const jerk = Math.hypot(nb - lastB, ng - lastG);
+    if (jerk > sens) release(jerk * 0.5);
+  }
+
+  lastB = nb;
+  lastG = ng;
   beta = nb;
   gamma = ng;
   updateTilt();
@@ -590,16 +797,9 @@ canvas.addEventListener('pointermove', e => {
   updateTilt();
 });
 
-/* Тап по снимку оживляет иконки и подталкивает их. */
-canvas.addEventListener('pointerdown', e => {
-  try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* указатель мог пропасть */ }
-  release(26);
-});
-
-/* ── Кнопки ─────────────────────────────────────────────── */
-
-$('#shake').addEventListener('click', () => release(24));
-$('#reset').addEventListener('click', reset);
+/* Тап по экрану собирает иконки обратно на места. Отпускать их может
+   только тряска телефона — как в ролике. */
+canvas.addEventListener('pointerdown', () => home());
 
 /* ── Старт ──────────────────────────────────────────────── */
 

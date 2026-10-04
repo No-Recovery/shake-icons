@@ -101,9 +101,12 @@ try {
   $js = Get-Content -LiteralPath (Join-Path $root 'site\compose.js') -Raw
   Check 'слушает deviceorientation' ($js -match "addEventListener\('deviceorientation'") ''
   Check 'спрашивает разрешение iOS' ($js -match 'requestPermission') ''
-  Check 'тап отпускает иконки' ($js -match 'release\(26\)') ''
+  Check 'тряска отпускает иконки' ($js -match 'jerk > sens' -and $js -match 'release\(jerk') ''
   Check 'тряска экрана убрана' ($js -notmatch 'addShake' -and $js -notmatch 'shakeAmp') ''
-  Check 'иконки не вращаются' ($js -notmatch 'vrot') ''
+  Check 'иконки крутятся' ($js -match 'vrot' -and $js -match 'ctx\.rotate') ''
+  Check 'края экрана срезают иконки' ($js -match 'OVERHANG') ''
+  Check 'тап собирает иконки на места' ($js -match "pointerdown" -and $js -match 'function home') ''
+  Check 'иконки не разгоняются сами' ($js -notmatch 'IDLE_KICK') ''
   Check 'гравитация из beta/gamma' ($js -match 'Math\.sin\(b\)' -and $js -match 'Math\.sin\(g\)') ''
 
   $app = Get-Content -LiteralPath (Join-Path $root 'site\app.js') -Raw

@@ -29,7 +29,6 @@
   <span id="tilt"></span>
   <span id="hint"></span>
   <button id="gyro"></button>
-  <button id="shake"></button>
   <button id="reset"></button>
   <div id="loader"></div>
   <pre id="fatal" hidden></pre>
@@ -188,21 +187,31 @@ async function run() {
         getComputedStyle(document.body).overflow === 'hidden',
         getComputedStyle(document.body).overflow);
 
-  /* тап отпускает иконки */
-  document.getElementById('shake').click();
+  /* Пока телефон плашмя и не трясут — иконки на местах */
+  advance(0.5);
+  check('без тряски иконки держат места',
+        icons.every(i => !i.free) &&
+        document.getElementById('statState').textContent === 'на местах',
+        document.getElementById('statState').textContent);
+
+  /* Тряска телефона отпускает иконки: onOrientation ловит резкий поворот */
+  onOrientation({ beta: 5, gamma: 0 });
+  onOrientation({ beta: 30, gamma: 25 });
   const st = document.getElementById('statState').textContent;
-  check('тап отпускает иконки', /в движении 16/.test(st), st);
+  check('тряска телефона отпускает иконки', /в движении 16/.test(st), st);
 
   /* иконки двигаются и не совпадают с эталоном */
+  beta = 60;
   advance(0.6);
   const d1 = meanDiff(shot(), refData);
   check('после тряски иконки двинулись', d1 > d0 + 0.5,
         'было ' + d0.toFixed(2) + ', стало ' + d1.toFixed(2));
+  beta = 0;
 
   /* смещение должно быть вниз: телефон наклонён вперёд (beta > 0) */
   reset();
   beta = 60;
-  document.getElementById('shake').click();
+  release(24);
   advance(0.6);
   const moved = icons.filter(i => i.free);
   const down = moved.filter(i => i.y > i.homeY).length;
@@ -214,20 +223,29 @@ async function run() {
   /* гравитация по горизонтали: при gamma > 0 иконки уходят вправо */
   reset();
   gamma = 45;
-  document.getElementById('shake').click();
+  release(24);
   advance(0.6);
   const right = icons.filter(i => i.free && i.x > i.homeX).length;
   check('при наклоне вправо иконки идут вправо',
         right >= icons.length * 0.8, 'вправо ' + right + ' из ' + icons.length);
   gamma = 0;
 
-  /* телефон плашмя: гравитации нет, иконки только гаснут */
+  /* Покой должен быть настоящим: осевший штабель сам собирается на места,
+     как в ролике, и больше не шевелится. */
+  const realSettle = SETTLE_TIME;
   reset();
-  document.getElementById('shake').click();
-  advance(4);
-  const settled = icons.filter(i => Math.hypot(i.vx, i.vy) < 1).length;
-  check('без наклона иконки останавливаются', settled === icons.length,
-        'остановились ' + settled + ' из ' + icons.length);
+  beta = 70;
+  release(24);
+  advance(12);
+  const stillHome = icons.every(i =>
+    !i.free && Math.abs(i.x - i.homeX) < 0.5 && Math.abs(i.y - i.homeY) < 0.5);
+  check('после оседания иконки сами собираются на места',
+        stillHome, icons.filter(i => i.free).length + ' ещё в движении');
+  beta = 0;
+
+  /* Дальше проверяем форму штабеля, поэтому авто-сборку отключаем:
+     иначе иконки разъедутся по своим местам раньше, чем мы их измерим. */
+  SETTLE_TIME = 1e9;
 
   /* Никакой тряски экрана: полоса фона выше иконок не должна сдвинуться
      за все кадры, пока иконки бьются о низ */
@@ -235,7 +253,7 @@ async function run() {
   advance(0.1);
   const bgBefore = bgProbe();
   beta = 70;
-  document.getElementById('shake').click();
+  release(24);
   let bgWorst = 0;
   for (let i = 0; i < 180; i++) { step(1 / 60); render(); bgWorst = Math.max(bgWorst, meanDiff(bgProbe(), bgBefore)); }
   check('фон не трясётся при ударах иконок', bgWorst < 0.5,
@@ -245,7 +263,7 @@ async function run() {
   /* Иконка ложится на иконку, а не проходит сквозь неё */
   reset();
   beta = 70;
-  document.getElementById('shake').click();
+  release(24);
   advance(6);
 
   let worst = 0;
@@ -296,21 +314,28 @@ async function run() {
   check('меню настроек удалено', !knob && !panel,
         'knob=' + !!knob + ' panel=' + !!panel);
 
-  /* Иконки не вращаются сами по себе: раньше от ударов появлялся
-     случайный vrot, и картинки «вертелись» вместо физики. */
+  /* В ролике иконки крутятся, пока летят: раскрутку даёт толчок */
   reset();
   beta = 70;
-  document.getElementById('shake').click();
-  advance(2);
-  const spun = icons.filter(i => i.rot || i.vrot).length;
-  check('иконки не крутятся сами по себе', spun === 0,
-        'вращающихся ' + spun + ' из ' + icons.length);
+  release(24);
+  let spunFrames = 0;
+  let maxTurn = 0;
+  for (let i = 0; i < 120; i++) {
+    step(1 / 60);
+    for (const ic of icons) {
+      if (ic.vrot) spunFrames++;
+      if (Math.abs(ic.rot) > maxTurn) maxTurn = Math.abs(ic.rot);
+    }
+  }
+  check('иконки крутятся в полёте, как в ролике',
+        spunFrames > 40 && maxTurn > 0.5,
+        'кадров с вращением ' + spunFrames + ', поворот до ' + maxTurn.toFixed(2) + ' рад');
   beta = 0;
 
   /* Иконки должны реально лететь, а не мгновенно замирать на месте */
   reset();
   beta = 70;
-  document.getElementById('shake').click();
+  release(24);
   let peakSpeed = 0;
   let flying = 0;
   for (let i = 0; i < 90; i++) {
@@ -328,21 +353,68 @@ async function run() {
   /* небольшой наклон всё ещё сдвигает иконки */
   reset();
   gamma = 12;
-  document.getElementById('shake').click();
+  release(24);
   advance(1.5);
   check('слабый наклон тоже сдвигает иконки',
         icons.filter(i => i.free && i.x > i.homeX).length >= icons.length * 0.8,
         'вправо ' + icons.filter(i => i.free && i.x > i.homeX).length + ' из ' + icons.length);
   gamma = 0;
 
-  /* тап по самому экрану тоже оживляет иконки */
+  /* Края экрана срезают иконки: в ролике они выезжают за край наполовину,
+     но совсем не исчезают */
   reset();
+  beta = 20;
+  gamma = 60;
+  release(40);
+  let clipped = 0;
+  let vanished = 0;
+  for (let i = 0; i < 300; i++) {
+    step(1 / 60);
+    for (const ic of icons) {
+      if (ic.x + ic.w < 0 || ic.x > W || ic.y + ic.h < 0 || ic.y > H) vanished++;
+      else if (ic.x < 0 || ic.x + ic.w > W) clipped++;
+    }
+  }
+  check('иконки обрезаются краем экрана, но не улетают',
+        clipped > 0 && vanished === 0,
+        'кадров за краем ' + clipped + ', улетело ' + vanished);
+  beta = 0;
+  gamma = 0;
+
+  SETTLE_TIME = realSettle;
+
+  /* Тап по экрану собирает иконки обратно на места */
+  reset();
+  beta = 70;
+  release(24);
+  advance(1);
+  const flyingNow = icons.filter(i => i.free).length;
   try {
     screen.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 1, bubbles: true }));
   } catch (e) { /* синтетическое событие без настоящего указателя */ }
-  check('тап по экрану отпускает иконки',
-        document.getElementById('statState').textContent === 'в движении 16',
-        document.getElementById('statState').textContent);
+  advance(RETURN_TIME + 0.2);
+  check('тап по экрану собирает иконки на места',
+        flyingNow > 0 && icons.every(i =>
+          !i.free && i.x === i.homeX && i.y === i.homeY && i.rot === 0),
+        'в движении было ' + flyingNow + ', осталось ' + icons.filter(i => i.free).length);
+  beta = 0;
+
+  /* Возврат не телепорт: иконка летит на место около RETURN_TIME */
+  reset();
+  beta = 70;
+  release(24);
+  advance(1);
+  home();
+  advance(RETURN_TIME * 0.25);
+  const stillAway = icons.filter(i => i.free).length;
+  const notYetHome = icons.filter(i => Math.hypot(i.x - i.homeX, i.y - i.homeY) > 1).length;
+  check('возврат плавный, а не телепорт',
+        stillAway === icons.length && notYetHome > 0,
+        'в пути ' + stillAway + ', ещё не на месте ' + notYetHome);
+  advance(RETURN_TIME + 0.2);
+  check('после плавного возврата все на местах',
+        icons.every(i => !i.free), icons.filter(i => i.free).length + ' в движении');
+  beta = 0;
 
   /* возврат на места */
   reset();
@@ -354,9 +426,21 @@ async function run() {
   const d2 = meanDiff(shot(), refData);
   check('после возврата снова эталон', d2 < 12, 'средняя разница ' + d2.toFixed(2));
 
-  /* иконки не выходят за края экрана */
-  const out = icons.filter(i => i.x < 0 || i.y < 0 || i.x + i.w > W || i.y + i.h > H).length;
-  check('иконки не вылетают за экран', out === 0, 'за краями ' + out);
+  /* Иконки не улетают за экран целиком */
+  reset();
+  beta = 20;
+  gamma = 60;
+  release(40);
+  let gone = 0;
+  for (let i = 0; i < 300; i++) {
+    step(1 / 60);
+    for (const ic of icons) {
+      if (ic.x + ic.w < 0 || ic.x > W || ic.y + ic.h < 0 || ic.y > H) gone++;
+    }
+  }
+  check('иконки не улетают за экран', gone === 0, 'улетело ' + gone);
+  beta = 0;
+  gamma = 0;
 }
 
 run()
