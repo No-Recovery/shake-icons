@@ -49,6 +49,7 @@ function loadBitmap(src) {
 
 const log = [];
 let fails = 0;
+let done = false;
 
 function check(name, ok, detail) {
   if (!ok) fails++;
@@ -57,9 +58,22 @@ function check(name, ok, detail) {
 }
 
 function paint() {
-  document.getElementById('out').textContent =
-    log.join('\n') + '\n\n' + (fails === 0 ? 'RESULT: PASS' : 'RESULT: FAIL (' + fails + ')');
-  document.documentElement.dataset.result = fails === 0 ? 'pass' : 'fail';
+  /* Пока прогон не закончен, PASS писать нельзя: проверки идут с await,
+     и промежуточное состояние выглядело бы как успех. */
+  const verdict = done
+    ? (fails === 0 ? 'RESULT: PASS' : 'RESULT: FAIL (' + fails + ')')
+    : 'RESULT: выполняется, проверок: ' + log.filter(l => /^(ok|FAIL)/.test(l)).length;
+
+  window.__text = log.join('\n') + '\n\n' + verdict;
+  document.getElementById('out').textContent = window.__text;
+  document.documentElement.dataset.result = done ? (fails === 0 ? 'pass' : 'fail') : 'running';
+}
+
+/* Стенд читает результат из POST /__result */
+function report() {
+  try {
+    fetch('/__result', { method: 'POST', body: window.__text || '' });
+  } catch (e) { /* стенд разберётся по таймауту */ }
 }
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -185,7 +199,7 @@ async function run() {
 
 run()
   .catch(err => { check('исключение', false, err.message); })
-  .then(() => setTimeout(paint, 50));
+  .then(() => { done = true; paint(); report(); });
 </script>
 </body>
 </html>

@@ -47,13 +47,27 @@ function newKey() {
 
 const MAX_SIDE = 1500;
 
-function loadBitmap(blob) {
-  return createImageBitmap(blob).catch(() => new Promise((resolve, reject) => {
+/* createImageBitmap появляется только в Safari 15 и новее. В более старых
+   браузерах обращения к нему нет вовсе, а это ReferenceError, а не отклонённый
+   промис, поэтому .catch() не помогает и нужен отдельный путь. */
+function loadViaImg(blob) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
     const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = URL.createObjectURL(blob);
-  }));
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('не удалось прочитать изображение'));
+    };
+    img.src = url;
+  });
+}
+
+function loadBitmap(blob) {
+  if (typeof createImageBitmap === 'function') {
+    return createImageBitmap(blob).catch(() => loadViaImg(blob));
+  }
+  return loadViaImg(blob);
 }
 
 /* Размер анализа: длинная сторона не больше MAX_SIDE */

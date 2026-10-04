@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Проверка страницы загрузки</title>
+<style>
+  body { font: 13px ui-monospace, Menlo, Consolas, monospace; background: #030712; color: #eee; padding: 16px; }
+  pre { white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<pre id="out">запуск…</pre>
+
+<main class="upload">
+  <button class="bigbtn" id="pick">Загрузить два фото</button>
+  <input type="file" id="files" accept="image/*" multiple hidden>
+  <p class="upload__hint" id="hint">Выберите два скриншота</p>
+  <div class="pair" id="pair" hidden>
+    <figure class="slot" data-role="clean"><canvas class="slot__img"></canvas><figcaption>Без иконок</figcaption></figure>
+    <figure class="slot" data-role="icons"><canvas class="slot__img"></canvas><figcaption>С иконками</figcaption></figure>
+  </div>
+  <div class="status" id="status" hidden></div>
+  <div class="actions" id="actions" hidden>
+    <button class="linkbtn" id="swap">Поменять местами</button>
+    <button class="linkbtn" id="replace">Выбрать заново</button>
+  </div>
+  <button class="gobtn" id="go" hidden>Открыть новую вкладку</button>
+  <div class="error" id="error" hidden></div>
+</main>
+
+<script src="site/lib.js"></script>
+<script src="testdata.js"></script>
+<script>
+/* Подменяем открытие вкладки: headless и блокировщики не дают проверить её иначе */
+window.__opened = [];
+window.open = function (url, target, feats) {
+  window.__opened.push(String(url));
+  const loc = {
+    href: String(url),
+    replace(u) { this.href = String(u); window.__opened.push(String(u)); }
+  };
+  return { closed: false, location: loc, close() { this.closed = true; }, focus() {} };
+};
+
+/* Под виртуальным временем createImageBitmap не резолвится — грузим через <img> */
+window.loadBitmap = function (blob) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('не читается')); };
+    img.src = url;
+  });
+};
+</script>
+<script src="site/app.js"></script>
+<script>
+'use strict';
+
+/* Собираем подробности об ошибках: app.js показывает только e.message */
+window.__errors = [];
+window.addEventListener('error', e => {
+  window.__errors.push({
+    message: e.message || '(пусто)',
+    file: e.filename || '(нет файла)',
+    line: e.lineno, col: e.colno,
+    stack: e.error && e.error.stack ? String(e.error.stack).slice(0, 300) : '(нет стека)'
+  });
+}, true);
+
+const log = [];
+let fails = 0;
+let done = false;
+
+function check(name, ok, detail) {
+  if (!ok) fails++;
+  log.push((ok ? 'ok   ' : 'FAIL ') + name + (detail ? '  [' + detail + ']' : ''));
+  paint();
+}
+function paint() {
+  const verdict = done
+    ? (fails === 0 ? 'RESULT: PASS' : 'RESULT: FAIL (' + fails + ')')
+    : 'RESULT: выполняется, проверок: ' + log.filter(l => /^(ok|FAIL)/.test(l)).length;
+
+  const text = log.join('\n') +
+    '\n\nошибок в окне: ' + window.__errors.length +
+    (window.__errors.length ? '\n' + JSON.stringify(window.__errors, null, 1) : '') +
+    '\n\n' + verdict;
+
+  document.getElementById('out').textContent = text;
+  window.__text = text;
+}
+
+/* Стенд читает результат из POST /__result: --dump-dom без виртуального времени
+   успевает только до события загрузки, а тест живёт дольше. */
+function report() {
+  try {
+    fetch('/__result', { method: 'POST', body: window.__text || '' });
+  } catch (e) { /* стенд разберётся по таймауту */ }
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const el = s => document.querySelector(s);
+
+const PAIR = tdMakePair();
+
+function toBlob(canvas) {
+  return new Promise(res => canvas.toBlob(res, 'image/png'));
+}
+
+/* Кладём два файла в input так, будто их выбрали в диалоге */
+function mark(m) { log.push('     · ' + m); paint(); }
+
+async function pickFiles(canvases) {
+  mark('создаю файлы');
+  const files = await Promise.all(canvases.map(async c => {
+    const blob = await toBlob(c);
+    return new File([blob], 'shot' + Math.random().toString(36).slice(2) + '.png',
+                    { type: 'image/png' });
+  }));
+  mark('файлов: ' + files.length + ', размеры: ' + files.map(f => f.size).join(' и '));
+
+  const dt = new DataTransfer();
+  files.forEach(f => dt.items.add(f));
+
+  const inp = el('#files');
+  inp.files = dt.files;
+  mark('в input.files: ' + inp.files.length);
+  inp.dispatchEvent(new Event('change', { bubbles: true }));
+  mark('событие change отправлено, подсказка: ' + JSON.stringify(el('#hint').textContent.slice(0, 40)));
+  return files;
+}
+
+/* Считаем итерации, а не время: под виртуальным временем Date.now() бежит вперёд */
+async function waitFor(fn, tries) {
+  const n = tries || 600;
+  for (let i = 0; i < n; i++) {
+    if (fn()) return true;
+    await sleep(50);
+  }
+  return false;
+}
+
+/* Под виртуальным временем IndexedDB тоже может не завершиться — ограничиваем ожидание */
+function withTimeout(p, ms, what) {
+  return Promise.race([
+    p,
+    new Promise((_, rej) => setTimeout(() => rej(new Error('таймаут: ' + what)), ms))
+  ]);
+}
+
+async function run() {
+  /* Сначала убеждаемся, что хранилище вообще работает (в IDB кладём блобы, а не canvas) */
+  let idbDetail = '';
+  try {
+    const blobs = await Promise.all([toBlob(PAIR.clean), toBlob(PAIR.withIcons)]);
+    await withTimeout(idbPut('__probe', { clean: blobs[0], icons: blobs[1], at: 1 }), 5000, 'idbPut');
+    const back = await withTimeout(idbGet('__probe'), 5000, 'idbGet');
+    idbDetail = !!(back && back.clean && back.icons) ? '' : 'запись не прочиталась';
+  } catch (e) {
+    idbDetail = e.message;
+  }
+  check('IndexedDB работает', idbDetail === '', idbDetail || 'ок');
+
+  const ok = await waitFor(() => el('#status').hidden === false, 800);
+  check('после выбора файлов показан статус', ok,
+        'подсказка: ' + JSON.stringify(el('#hint').textContent.slice(0, 50)) +
+        ' | ошибка на экране: ' + (el('#error').hidden ? 'нет' : el('#error').textContent));
+
+  if (!ok) {
+    check('разбор снимков', false,
+          JSON.stringify(window.__errors).slice(0, 400));
+    return;
+  }
+
+  check('иконки определены на втором снимке',
+        /иконки определены на <b>втором<\/b>/.test(el('#status').innerHTML),
+        el('#status').innerHTML.replace(/<[^>]+>/g, ''));
+
+  check('кнопка запуска показана', el('#go').hidden === false);
+  check('нет ошибки на экране', el('#error').hidden === true, el('#error').textContent);
+
+/* Файл из диалога — это File, а не Blob: проверяем, что он вообще кладётся */
+  let fileDetail = '';
+  try {
+    await withTimeout(idbPut('__fileprobe', { clean: cleanBlob, icons: iconsBlob, at: 1 }), 5000, 'idbPut File');
+    const back = await withTimeout(idbGet('__fileprobe'), 5000, 'idbGet File');
+    fileDetail = !!(back && back.clean && back.icons) ? '' : 'запись не прочиталась';
+  } catch (e) {
+    fileDetail = e.message;
+  }
+  check('File из диалога кладётся в IndexedDB', fileDetail === '', fileDetail || 'ок');
+
+  /* ── Запуск: вкладка должна открываться сразу, в обработчике клика ── */
+  el('#go').click();
+  check('вкладка открывается синхронно, до любых await',
+        window.__opened.length === 1 && window.__opened[0] === 'about:blank',
+        'вызовов сразу после клика: ' + window.__opened.length +
+        ', первый: ' + (window.__opened[0] || '(нет)'));
+
+  const key = storeKey;
+  check('ключ записи сгенерирован', !!key, String(key));
+
+  /* Ждём, пока снимки действительно окажутся в IndexedDB */
+  let rec = null;
+  for (let i = 0; i < 600 && !rec; i++) {
+    await sleep(50);
+    try { const r = await idbGet(key); if (r && r.clean && r.icons) rec = r; } catch (e) { /* ещё нет */ }
+  }
+  check('снимки сохранены в IndexedDB', !!rec,
+        key ? 'ключ ' + key + ', запись ' + (rec ? 'есть' : 'не появилась') : 'ключ не извлечён');
+
+  check('открытая вкладка переходит на compose.html',
+        /^compose\.html#[A-Za-z0-9]+$/.test(window.__opened[1] || ''),
+        'адрес: ' + (window.__opened[1] || '(нет)'));
+
+  check('на кнопке написано «Тестировать»', el('#go').textContent === 'Тестировать',
+        'текст: ' + JSON.stringify(el('#go').textContent));
+
+  check('нет ошибок в окне', window.__errors.length === 0,
+        JSON.stringify(window.__errors).slice(0, 300));
+}
+
+run()
+  .catch(err => { check('исключение', false, err.message + ' | ' + (err.stack || '').slice(0, 200)); })
+  .then(() => { done = true; paint(); report(); });
+
+/* Подкладываем файлы сразу после разбора скриптов */
+setTimeout(() => pickFiles([PAIR.clean, PAIR.withIcons])
+  .catch(e => check('не удалось подложить файлы', false, e.message)), 50);
+</script>
+</body>
+</html>

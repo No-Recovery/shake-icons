@@ -86,9 +86,15 @@ try {
   log.push('FAIL исключение: ' + err.message);
 }
 
-document.getElementById('out').textContent =
-  log.join('\n') + '\n\n' + (fails === 0 ? 'RESULT: PASS' : 'RESULT: FAIL (' + fails + ')');
+const verdict = fails === 0 ? 'RESULT: PASS' : 'RESULT: FAIL (' + fails + ')';
+window.__text = log.join('\n') + '\n\n' + verdict;
+document.getElementById('out').textContent = window.__text;
 document.documentElement.dataset.result = fails === 0 ? 'pass' : 'fail';
+
+/* Стенд читает результат из POST /__result */
+try {
+  fetch('/__result', { method: 'POST', body: window.__text });
+} catch (e) { /* стенд разберётся по таймауту */ }
 </script>
 </body>
 </html>

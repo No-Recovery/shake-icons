@@ -15,6 +15,8 @@ const errorBox = $('#error');
 const swapBtn = $('#swap');
 const replaceBtn = $('#replace');
 
+const GO_LABEL = 'Тестировать';
+
 let cleanBlob = null;
 let iconsBlob = null;
 let storeKey = null;
@@ -115,19 +117,33 @@ swapBtn.addEventListener('click', async () => {
 
 /* ── Новая вкладка ──────────────────────────────────────── */
 
-goBtn.addEventListener('click', async () => {
+/* Вкладку открываем синхронно, прямо в обработчике клика: после любого await
+   жест пользователя считается протухшим и блокировщик не даёт открыть окно. */
+goBtn.addEventListener('click', () => {
   goBtn.disabled = true;
   goBtn.textContent = 'Готовим…';
-  try {
-    if (!storeKey) storeKey = newKey();
-    await idbPut(storeKey, { clean: cleanBlob, icons: iconsBlob, at: Date.now() });
-    window.open('compose.html#' + storeKey, '_blank', 'noopener');
-    goBtn.textContent = 'Открыть новую вкладку';
+
+  const tab = window.open('about:blank', '_blank');
+  if (!tab) {
     goBtn.disabled = false;
-    hint.textContent = 'Если вкладка не открылась, разрешите всплывающие окна.';
-  } catch (err) {
-    showError('Не удалось сохранить изображения: ' + err.message);
-    goBtn.disabled = false;
-    goBtn.textContent = 'Открыть новую вкладку';
+    goBtn.textContent = GO_LABEL;
+    showError('Браузер заблокировал новую вкладку. Разрешите всплывающие окна для этого сайта.');
+    return;
   }
+
+  (async () => {
+    try {
+      if (!storeKey) storeKey = newKey();
+      await idbPut(storeKey, { clean: cleanBlob, icons: iconsBlob, at: Date.now() });
+      tab.location.replace('compose.html#' + storeKey);
+      goBtn.textContent = GO_LABEL;
+      goBtn.disabled = false;
+      hint.textContent = 'Вкладка с этим экраном открыта в соседней вкладке.';
+    } catch (err) {
+      tab.close();
+      showError('Не удалось сохранить изображения: ' + err.message);
+      goBtn.disabled = false;
+      goBtn.textContent = GO_LABEL;
+    }
+  })();
 });

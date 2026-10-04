@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 
 $chrome = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
 $root   = $PSScriptRoot
-$port   = 8731
+$port   = 8770
 $url    = "http://127.0.0.1:$port/"
 
 $script:fail = 0
@@ -14,24 +14,21 @@ function Check([string]$what, [bool]$ok, [string]$detail) {
   "{0}  {1}{2}" -f $(if ($ok) { 'OK  ' } else { 'FAIL' }), $what, $(if ($detail) { "  [$detail]" } else { '' })
 }
 
-function Show-Result([string]$name, [string]$dom) {
-  $body = ''
-  if ($dom -match '(?s)<pre id="out">(.*?)</pre>') { $body = $matches[1] }
-  $body -split "`n" | Where-Object { $_ -match '^\s*(ok|FAIL)' } | ForEach-Object { "      $_" }
-  $verdict = if ($dom -match 'RESULT:\s*PASS') { $true } else { $false }
-  Check $name $verdict $(if ($verdict) { '' } else { 'см. строки выше' })
-}
+# Свой стенд вместо python -m http.server: под виртуальным временем Chrome
+# не доводит транзакции IndexedDB до конца, и проверки проходят врань.
+# Страницы отправляют результат на POST /__result, сервер кладёт его в один файл —
+# страницы запускаются по очереди, так что файла достаточно одного.
+$resultFile = Join-Path $env:TEMP 'si-result.txt'
 
-# ── Локальный сервер: IndexedDB не работает на file://
 $job = Start-Job -ScriptBlock {
-  param($r, $p)
-  Set-Location $r
-  python -m http.server $p --bind 127.0.0.1
-} -ArgumentList $root, $port
+  param($r, $p, $o)
+  & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $r 'serve-test.ps1') `
+      -Root $r -Port $p -OutFile $o -MaxSeconds 600
+} -ArgumentList $root, $port, $resultFile
 
 try {
   $ready = $false
-  for ($i = 0; $i -lt 40; $i++) {
+  for ($i = 0; $i -lt 60; $i++) {
     try {
       $r = Invoke-WebRequest -Uri ($url + 'site/index.html') -UseBasicParsing -TimeoutSec 3
       if ($r.StatusCode -eq 200) { $ready = $true; break }
@@ -39,47 +36,80 @@ try {
   }
   if (-not $ready) { throw 'Не удалось поднять локальный сервер' }
 
-  function Get-Dom([string]$path, [int]$budget = 20000) {
-    $o = Join-Path $env:TEMP ("si-" + [IO.Path]::GetFileName($path) + ".html")
-    $ErrorActionPreference = 'Continue'
-    & $chrome --headless=new --disable-gpu --no-first-run `
-              --virtual-time-budget=$budget --dump-dom ($url + $path) 2>$null |
-      Out-File -FilePath $o -Encoding utf8
-    $ErrorActionPreference = 'Stop'
-    Get-Content -LiteralPath $o -Raw -Encoding utf8
+  # Запускает страницу и ждёт результат, который она отправляет на POST /__result
+  function Invoke-Page([string]$path, [int]$TimeoutSec = 120) {
+    if (Test-Path -LiteralPath $resultFile) { Remove-Item -LiteralPath $resultFile -Force }
+
+    $name = [IO.Path]::GetFileNameWithoutExtension($path)
+    $profileDir = Join-Path $env:TEMP ("si-chrome-" + $name)
+    if (Test-Path -LiteralPath $profileDir) { Remove-Item -LiteralPath $profileDir -Recurse -Force -ErrorAction SilentlyContinue }
+
+    $p = Start-Process $chrome -PassThru -ArgumentList @(
+      '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
+      "--user-data-dir=$profileDir", ($url + $path)
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    while (-not (Test-Path -LiteralPath $resultFile) -and (Get-Date) -lt $deadline) {
+      Start-Sleep -Milliseconds 400
+    }
+    Start-Sleep -Milliseconds 400
+
+    Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+
+    if (-not (Test-Path -LiteralPath $resultFile)) { return $null }
+    Get-Content -LiteralPath $resultFile -Raw -Encoding utf8
+  }
+
+  function Show-Result([string]$name, [string]$text) {
+    if (-not $text) { Check $name $false 'страница не вернула результат'; return }
+    ($text -split "`n") | Where-Object { $_ -match '^\s*(ok|FAIL|·)' } | ForEach-Object { "      $_" }
+    $verdict = if ($text -match 'RESULT:\s*PASS') { $true } else { $false }
+    $why = if ($verdict) { '' }
+           elseif ($text -match 'RESULT:\s*выполняется') { 'прогон не завершился' }
+           else { 'см. строки выше' }
+    Check $name $verdict $why
   }
 
   # ── 1. Извлечение иконок из пары снимков
-  Show-Result 'извлечение иконок' (Get-Dom 'test-extract.html')
+  Show-Result 'извлечение иконок' (Invoke-Page 'test-extract.html' 90)
 
-  # ── 2. Сквозной сценарий: загрузка → новая вкладка → физика
-  Show-Result 'сквозной сценарий compose.html' (Get-Dom 'test-e2e.html' 40000)
+  # ── 2. Сквозной сценарий: сборка сцены и физика
+  Show-Result 'сквозной сценарий compose.html' (Invoke-Page 'test-e2e.html' 120)
 
-  # ── 3. Страницы отдаются без ошибок и содержат нужные элементы
-  $dom = Get-Dom 'site/index.html' 8000
+  # ── 3. Страница загрузки: выбор файлов, сохранение, открытие вкладки
+  Show-Result 'страница загрузки' (Invoke-Page 'test-upload.html' 150)
+
+  # ── 4. Страницы отдаются без ошибок и содержат нужные элементы
+  $dom = (Invoke-WebRequest -Uri ($url + 'site/index.html') -UseBasicParsing).Content
   Check 'index.html отдаётся' ($dom -match 'id="pick"') ''
   Check 'кнопка одна' ([regex]::Matches($dom, 'class="bigbtn"').Count -eq 1) ''
   Check 'ввод на два файла' ($dom -match 'id="files"[^>]*multiple') ''
+  Check 'кнопка называется «Тестировать»' ($dom -match 'id="go"[^>]*>Тестировать<') ''
 
-  $dom = Get-Dom 'site/compose.html' 8000
+  $dom = (Invoke-WebRequest -Uri ($url + 'site/compose.html') -UseBasicParsing).Content
   Check 'compose.html отдаётся' ($dom -match 'id="screen"') ''
   Check 'кнопка гироскопа' ($dom -match 'id="gyro"') ''
   Check 'кнопка тряски' ($dom -match 'id="shake"') ''
   Check 'кнопка возврата' ($dom -match 'id="reset"') ''
   Check 'слайдер силы' ($dom -match 'id="power"') ''
 
-  # ── 4. В коде есть гироскоп и гравитация по наклону
+  # ── 5. В коде есть гироскоп и гравитация по наклону
   $js = Get-Content -LiteralPath (Join-Path $root 'site\compose.js') -Raw
   Check 'слушает deviceorientation' ($js -match "addEventListener\('deviceorientation'") ''
   Check 'спрашивает разрешение iOS' ($js -match 'requestPermission') ''
   Check 'сила тряски зависит от наклона' ($js -match 'release\(jerk') ''
   Check 'гравитация из beta/gamma' ($js -match 'Math\.sin\(b\)' -and $js -match 'Math\.sin\(g\)') ''
 
+  $app = Get-Content -LiteralPath (Join-Path $root 'site\app.js') -Raw
+  Check 'вкладка открывается до await' ($app -match "window\.open\('about:blank'") ''
+
   $lib = Get-Content -LiteralPath (Join-Path $root 'site\lib.js') -Raw
   Check 'анализ по разнице снимков' ($lib -match 'function analyze') ''
   Check 'связные компоненты' ($lib -match 'function components') ''
   Check 'склейка близких частей' ($lib -match 'function mergeComponents') ''
   Check 'сборка спрайта' ($lib -match 'function makeSprite') ''
+  Check 'createImageBitmap проверяется на наличие' ($lib -match "typeof createImageBitmap === 'function'") ''
 }
 finally {
   Stop-Job $job -ErrorAction SilentlyContinue
