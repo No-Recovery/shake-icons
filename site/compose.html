@@ -10,7 +10,7 @@
 
 <div class="topbar">
   <span class="topbar__title">Shake Icons</span>
-  <button class="btn btn--accent" id="gyro">Включить гироскоп</button>
+  <button class="btn btn--accent" id="gyro">Разрешить гироскоп</button>
   <button class="btn" id="shake">Тряхнуть</button>
   <button class="btn" id="reset">Вернуть иконки</button>
   <span class="topbar__spacer"></span>
@@ -18,18 +18,56 @@
 </div>
 
 <div class="stage">
-  <canvas class="screen" id="screen"></canvas>
+  <div class="stage__inner">
+    <canvas class="screen" id="screen"></canvas>
+  </div>
+
+  <!-- маленькая иконка прямо на экране: открывает настройки -->
+  <button class="knob" id="knob" aria-label="Настройки" aria-expanded="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 15.4a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8Z"/>
+      <path d="M19.4 13a7.7 7.7 0 0 0 0-2l2-1.5-2-3.4-2.3 1a7.6 7.6 0 0 0-1.7-1L15 2.7H9l-.4 2.4c-.6.3-1.2.6-1.7 1l-2.3-1-2 3.4L4.6 11a7.7 7.7 0 0 0 0 2l-2 1.5 2 3.4 2.3-1c.5.4 1.1.7 1.7 1l.4 2.4h6l.4-2.4c.6-.3 1.2-.6 1.7-1l2.3 1 2-3.4Z"/>
+    </svg>
+  </button>
+
+  <!-- меню: всё применяется в реальном времени -->
+  <div class="panel" id="panel" hidden>
+    <div class="panel__row">
+      <span class="panel__label">Сила</span>
+      <input type="range" id="power" min="30" max="220" value="100">
+      <span class="panel__val" id="powerVal">1.00</span>
+    </div>
+    <div class="panel__row">
+      <span class="panel__label">Отклик</span>
+      <input type="range" id="sens" min="2" max="40" value="14">
+      <span class="panel__val" id="sensVal">14</span>
+    </div>
+    <div class="panel__row">
+      <span class="panel__label">Прыгучесть</span>
+      <input type="range" id="bounce" min="0" max="80" value="28">
+      <span class="panel__val" id="bounceVal">0.28</span>
+    </div>
+    <div class="panel__row">
+      <span class="panel__label">Липкость</span>
+      <input type="range" id="friction" min="0" max="400" value="150">
+      <span class="panel__val" id="frictionVal">150</span>
+    </div>
+    <div class="panel__row">
+      <span class="panel__label">Тряска экрана</span>
+      <input type="range" id="shakeAmt" min="0" max="150" value="100">
+      <span class="panel__val" id="shakeAmtVal">1.00</span>
+    </div>
+    <div class="panel__foot">
+      <button class="btn" id="panelReset">Вернуть иконки</button>
+      <button class="btn" id="panelShake">Тряхнуть</button>
+    </div>
+  </div>
 </div>
 
 <div class="hud">
   <span>Иконок: <span class="hud__stat" id="statIcons">—</span></span>
   <span>Состояние: <span class="hud__stat" id="statState">на местах</span></span>
-  <span class="hud__label">Сила:</span>
-  <input type="range" id="power" min="30" max="220" value="100">
-  <span class="hud__label">Отклик:</span>
-  <input type="range" id="sens" min="2" max="40" value="14">
-  <span class="topbar__spacer"></span>
-  <span class="hud__label" id="hint">Наклоните телефон — иконки поедут в его сторону</span>
+  <span class="hud__label" id="hint">Тряхните телефон — иконки разлетятся</span>
 </div>
 
 <div class="loader" id="loader">Загружаем скриншоты…</div>

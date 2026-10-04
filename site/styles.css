@@ -200,9 +200,17 @@ body {
 .stage {
   flex: 1;
   min-height: 0;
+  position: relative;
   display: grid;
   place-items: center;
   padding: 14px;
+}
+
+.stage__inner {
+  display: grid;
+  place-items: center;
+  max-width: 100%;
+  max-height: 100%;
 }
 
 .screen {
@@ -213,6 +221,79 @@ body {
   box-shadow: 0 20px 60px -18px rgba(0, 0, 0, .9);
   touch-action: none;
 }
+
+/* маленькая иконка на самом экране */
+.knob {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, .22);
+  border-radius: 50%;
+  background: rgba(10, 12, 20, .72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #fff;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  z-index: 20;
+}
+.knob svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.knob:active { background: rgba(30, 36, 54, .85); }
+.knob[aria-expanded="true"] { background: rgba(0, 122, 255, .85); border-color: transparent; }
+
+/* меню настроек поверх экрана */
+.panel {
+  position: absolute;
+  right: 18px;
+  bottom: 70px;
+  width: 232px;
+  padding: 12px 13px;
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 14px;
+  background: rgba(10, 12, 20, .9);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 18px 44px -14px rgba(0, 0, 0, .95);
+  z-index: 20;
+  font-size: 12.5px;
+  color: var(--ink-dim);
+}
+.panel[hidden] { display: none; }
+.panel__row {
+  display: grid;
+  grid-template-columns: 84px 1fr 40px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+.panel__label { color: var(--ink-faint); }
+.panel__val {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--ink);
+}
+.panel input[type=range] { width: 100%; accent-color: var(--blue); }
+.panel__foot {
+  display: flex;
+  gap: 8px;
+  margin-top: 11px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.panel__foot .btn { flex: 1; padding: 6px 8px; font-size: 12px; }
 
 .hud {
   flex: none;
@@ -248,5 +329,6 @@ body {
 
 @media (max-width: 520px) {
   .hud { gap: 10px; font-size: 12px; }
-  .hud input[type=range] { width: 88px; }
+  .panel { right: 12px; bottom: 62px; width: 208px; }
+  .knob { right: 12px; bottom: 12px; }
 }

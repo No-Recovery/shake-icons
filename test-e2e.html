@@ -22,8 +22,21 @@
   <button id="gyro"></button>
   <button id="shake"></button>
   <button id="reset"></button>
-  <input type="range" id="power" value="100">
-  <input type="range" id="sens" value="14">
+  <button id="knob" aria-expanded="false"></button>
+  <div id="panel" hidden>
+    <button id="panelReset"></button>
+    <button id="panelShake"></button>
+    <input type="range" id="power" min="30" max="220" value="100">
+    <span id="powerVal"></span>
+    <input type="range" id="sens" min="2" max="40" value="14">
+    <span id="sensVal"></span>
+    <input type="range" id="bounce" min="0" max="80" value="28">
+    <span id="bounceVal"></span>
+    <input type="range" id="friction" min="0" max="400" value="150">
+    <span id="frictionVal"></span>
+    <input type="range" id="shakeAmt" min="0" max="150" value="100">
+    <span id="shakeAmtVal"></span>
+  </div>
   <canvas id="screen"></canvas>
   <div id="loader"></div>
   <pre id="fatal" hidden></pre>
@@ -171,6 +184,102 @@ async function run() {
   const settled = icons.filter(i => Math.hypot(i.vx, i.vy) < 1).length;
   check('без наклона иконки останавливаются', settled === icons.length,
         'остановились ' + settled + ' из ' + icons.length);
+
+  /* Тряска экрана: иконки бьются о низ при наклоне телефона вперёд */
+  reset();
+  shakeAmp = 0;
+  beta = 70;
+  document.getElementById('shake').click();
+  let peak = 0;
+  for (let i = 0; i < 180; i++) { step(1 / 60); if (shakeAmp > peak) peak = shakeAmp; }
+  check('экран трясётся при ударах', peak > 1,
+        'пиковая амплитуда ' + peak.toFixed(1));
+
+  /* и та же тряска гаснет, а не остаётся навсегда */
+  beta = 0;
+  for (let i = 0; i < 240; i++) step(1 / 60);
+  check('тряска затихает', shakeAmp === 0, 'осталось ' + shakeAmp.toFixed(2));
+
+  /* Иконка ложится на иконку, а не проходит сквозь неё */
+  reset();
+  beta = 70;
+  document.getElementById('shake').click();
+  advance(6);
+
+  let worst = 0;
+  for (let i = 0; i < icons.length; i++) {
+    for (let j = i + 1; j < icons.length; j++) {
+      const a = icons[i];
+      const b = icons[j];
+      if (!a.free || !b.free) continue;
+      const ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+      const oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+      const ov = Math.min(ox, oy);
+      if (ov > worst) worst = ov;
+    }
+  }
+  check('иконки ложатся друг на друга, не проходят сквозь', worst < 6,
+        'наибольшее наложение ' + worst.toFixed(1) + ' px');
+
+  /* Штабель: иконки лежат друг на друге, поэтому «у нижнего края» окажутся
+     не все — проверяем, что они успокоились и собрались ниже середины. */
+  /* Штабель: иконки лежат друг на друге, поэтому «у нижнего края» окажутся
+     не все — проверяем, что они успокоились и собрались ниже середины. */
+  const atRest = icons.filter(i => Math.hypot(i.vx, i.vy) < 1).length;
+  const belowMid = icons.filter(i => i.y + i.h / 2 > H / 2).length;
+  check('иконки успокоились и осели вниз',
+        atRest === icons.length && belowMid >= icons.length * 0.6,
+        'покоя ' + atRest + ' из ' + icons.length +
+        ', ниже середины ' + belowMid + ' из ' + icons.length);
+
+  /* и штабель сложен ровно: верхний ряд стоит вплотную на нижнем */
+  let gap = 0;
+  for (let i = 0; i < icons.length; i++) {
+    for (let j = 0; j < icons.length; j++) {
+      if (i === j) continue;
+      const a = icons[i];
+      const b = icons[j];
+      const ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+      if (ox <= 0) continue;
+      const dy = (b.y + b.h / 2) - (a.y + a.h / 2);
+      if (dy <= 0) continue;
+      const gapPx = b.y - (a.y + a.h);
+      if (gapPx > -1 && gapPx < gap + 1) gap = Math.max(gap, gapPx);
+    }
+  }
+  check('штабель без щелей', gap <= 1, 'худшая щель ' + gap.toFixed(1) + ' px');
+  beta = 0;
+
+  /* Меню настроек открывается и ползунки влияют на физику на лету */
+  const knob = document.getElementById('knob');
+  const panel = document.getElementById('panel');
+  knob.click();
+  check('меню открывается по маленькой иконке',
+        panel.hidden === false && knob.getAttribute('aria-expanded') === 'true',
+        'hidden=' + panel.hidden);
+
+  const setRange = (id, v) => {
+    const el = document.getElementById(id);
+    el.value = String(v);
+    el.dispatchEvent(new Event('input'));
+  };
+
+  reset();
+  setRange('friction', 400);
+  document.getElementById('shake').click();
+  advance(3);
+  const braked = icons.filter(i => Math.hypot(i.vx, i.vy) < 1).length;
+  setRange('friction', 150);
+  check('ползунок липкости меняет физику сразу', braked >= icons.length * 0.8,
+        'остановились ' + braked + ' из ' + icons.length);
+
+  const savedPower = power;
+  setRange('power', 220);
+  check('ползунок силы меняет гравитацию сразу', power === 2.2, 'power=' + power);
+  setRange('power', savedPower * 100);
+
+  knob.click();
+  check('меню закрывается повторным нажатием', panel.hidden === true, 'hidden=' + panel.hidden);
 
   /* небольшой наклон всё ещё сдвигает иконки */
   reset();
