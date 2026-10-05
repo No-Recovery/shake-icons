@@ -104,9 +104,11 @@ try {
   Check 'тряска отпускает иконки' ($js -match 'jerk > sens' -and $js -match 'release\(jerk') ''
   Check 'тряска экрана убрана' ($js -notmatch 'addShake' -and $js -notmatch 'shakeAmp') ''
   Check 'иконки крутятся' ($js -match 'vrot' -and $js -match 'ctx\.rotate') ''
+  Check 'вращение ограничено одним поворотом' ($js -match 'maxTurn' -and $js -match 'Math\.abs\(ic\.rot\) < maxTurn') ''
   Check 'края экрана срезают иконки' ($js -match 'OVERHANG') ''
   Check 'тап собирает иконки на места' ($js -match "pointerdown" -and $js -match 'function home') ''
   Check 'иконки не разгоняются сами' ($js -notmatch 'IDLE_KICK') ''
+  Check 'нет автосбора по времени' ($js -notmatch 'SETTLE_TIME') ''
   Check 'гравитация из beta/gamma' ($js -match 'Math\.sin\(b\)' -and $js -match 'Math\.sin\(g\)') ''
 
   $app = Get-Content -LiteralPath (Join-Path $root 'site\app.js') -Raw

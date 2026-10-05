@@ -230,22 +230,17 @@ async function run() {
         right >= icons.length * 0.8, 'вправо ' + right + ' из ' + icons.length);
   gamma = 0;
 
-  /* Покой должен быть настоящим: осевший штабель сам собирается на места,
-     как в ролике, и больше не шевелится. */
-  const realSettle = SETTLE_TIME;
+  /* Покой должен быть настоящим: осевший штабель лежит на месте столько,
+     сколько нужно, и никуда сам не собирается — сборка только по тапу. */
   reset();
   beta = 70;
   release(24);
-  advance(12);
-  const stillHome = icons.every(i =>
-    !i.free && Math.abs(i.x - i.homeX) < 0.5 && Math.abs(i.y - i.homeY) < 0.5);
-  check('после оседания иконки сами собираются на места',
-        stillHome, icons.filter(i => i.free).length + ' ещё в движении');
+  advance(20);
+  const lyingHome = icons.filter(i => !i.free).length;
+  const lyingFree = icons.filter(i => i.free).length;
+  check('осевший штабель остаётся лежать, а не собирается сам',
+        lyingFree > 0, 'собралось ' + lyingHome + ', лежит ' + lyingFree);
   beta = 0;
-
-  /* Дальше проверяем форму штабеля, поэтому авто-сборку отключаем:
-     иначе иконки разъедутся по своим местам раньше, чем мы их измерим. */
-  SETTLE_TIME = 1e9;
 
   /* Никакой тряски экрана: полоса фона выше иконок не должна сдвинуться
      за все кадры, пока иконки бьются о низ */
@@ -314,22 +309,26 @@ async function run() {
   check('меню настроек удалено', !knob && !panel,
         'knob=' + !!knob + ' panel=' + !!panel);
 
-  /* В ролике иконки крутятся, пока летят: раскрутку даёт толчок */
+  /* В ролике иконки крутятся в полёте, но коротко: это поворот, не юла.
+     Поэтому вращение есть, но суммарный поворот не превышает maxTurn. */
   reset();
   beta = 70;
   release(24);
   let spunFrames = 0;
-  let maxTurn = 0;
-  for (let i = 0; i < 120; i++) {
+  let turnSeen = 0;
+  for (let i = 0; i < 240; i++) {
     step(1 / 60);
     for (const ic of icons) {
       if (ic.vrot) spunFrames++;
-      if (Math.abs(ic.rot) > maxTurn) maxTurn = Math.abs(ic.rot);
+      if (Math.abs(ic.rot) > turnSeen) turnSeen = Math.abs(ic.rot);
     }
   }
-  check('иконки крутятся в полёте, как в ролике',
-        spunFrames > 40 && maxTurn > 0.5,
-        'кадров с вращением ' + spunFrames + ', поворот до ' + maxTurn.toFixed(2) + ' рад');
+  check('иконки слегка крутятся в полёте',
+        spunFrames > 40 && turnSeen > 0.4,
+        'кадров с вращением ' + spunFrames + ', поворот до ' + turnSeen.toFixed(2) + ' рад');
+  check('вращение ограничено, иконки не юлят',
+        turnSeen <= maxTurn + 1e-6,
+        'поворот ' + turnSeen.toFixed(2) + ' при пределе ' + maxTurn);
   beta = 0;
 
   /* Иконки должны реально лететь, а не мгновенно замирать на месте */
@@ -380,8 +379,6 @@ async function run() {
         'кадров за краем ' + clipped + ', улетело ' + vanished);
   beta = 0;
   gamma = 0;
-
-  SETTLE_TIME = realSettle;
 
   /* Тап по экрану собирает иконки обратно на места */
   reset();
