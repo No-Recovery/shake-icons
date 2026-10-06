@@ -1,0 +1,242 @@
+:root {
+  --bg: #030712;
+  --panel: #12141c;
+  --line: rgba(255, 255, 255, .1);
+  --ink: #fff;
+  --ink-dim: rgba(235, 238, 255, .6);
+  --ink-faint: rgba(235, 238, 255, .35);
+  --blue: #0a84ff;
+  --red: #ff453a;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font);
+  color: var(--ink);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+.page-upload {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
+}
+
+/* ── Экран загрузки ─────────────────────────────────────── */
+
+.upload {
+  width: 100%;
+  max-width: 460px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.upload__title {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -.02em;
+  margin-bottom: 30px;
+}
+
+.bigbtn {
+  width: 100%;
+  padding: 20px;
+  border: 0;
+  border-radius: 15px;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 19px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #0a84ff, #5e5ce6);
+  box-shadow: 0 10px 30px -8px rgba(10, 132, 255, .6);
+  transition: transform .14s ease, opacity .14s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.bigbtn:active { transform: scale(.985); }
+.bigbtn[disabled] { opacity: .5; pointer-events: none; }
+
+.upload__hint {
+  margin-top: 16px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-dim);
+}
+
+/* Превью двух скриншотов */
+.pair {
+  margin-top: 26px;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.slot {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  padding: 9px;
+  overflow: hidden;
+}
+
+.slot__img {
+  display: block;
+  width: 100%;
+  height: 190px;
+  object-fit: contain;
+  border-radius: 7px;
+  background: #000;
+}
+
+.slot figcaption {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.status {
+  margin-top: 18px;
+  font-size: 13.5px;
+  color: var(--ink-dim);
+}
+.status b { color: var(--ink); font-weight: 600; }
+
+.actions {
+  margin-top: 14px;
+  display: flex;
+  gap: 18px;
+}
+
+.linkbtn {
+  background: none;
+  border: 0;
+  padding: 4px 0;
+  font-family: var(--font);
+  font-size: 13.5px;
+  color: var(--blue);
+  cursor: pointer;
+}
+.linkbtn:hover { text-decoration: underline; }
+
+.gobtn {
+  margin-top: 22px;
+  width: 100%;
+  padding: 15px;
+  border: 0;
+  border-radius: 13px;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 16px;
+  font-weight: 600;
+  color: #04121f;
+  background: #fff;
+  transition: transform .14s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.gobtn:active { transform: scale(.985); }
+
+.error {
+  margin-top: 18px;
+  padding: 11px 13px;
+  border-radius: 10px;
+  background: rgba(255, 69, 58, .14);
+  border: 1px solid rgba(255, 69, 58, .4);
+  color: #ffb4ae;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: left;
+}
+
+/* ── Экран композиции ───────────────────────────────────── */
+
+/* Фон задаём и на html: iOS рисует нетто-бар и статус-бар поверх
+   страницы, и без него там остаётся белая полоса. */
+html { height: 100%; background: #000; }
+body.page-compose { height: 100%; overflow: hidden; background: #000; }
+
+/* Снимок занимает всю страницу целиком: ни панелей, ни полей, ни рамки.
+   Размеры задаём только через inset — любая ширина или высота рядом с ним
+   перестаёт работать, и на iOS блок не дотягивается до краёв, оставляя
+   сверху чёрную полосу. */
+.page-compose {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: #000;
+}
+
+/* Внутренние блоки тоже фиксированные: absolute внутри fixed на iOS
+   считает высоту от родителя, а не от экрана, и снимок уезжает вверх. */
+.stage,
+.stage__inner {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+}
+
+.stage {
+  padding: 0;
+  background: #000;
+}
+
+.screen {
+  display: block;
+  /* 100dvh вместо 100vh: адресная строка то появляется, то прячется, и
+     обычный 100vh оставляет после себя пустую полосу. Второе height и
+     min-height — запас на старые Safari без поддержки dvh. */
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 100%;
+  /* Пропорции снимка сохраняются, а поля по краям срезаются: с contain
+     по бокам остаются чёрные полосы, и до «всего экрана» не доходит. */
+  object-fit: cover;
+  touch-action: none;
+}
+
+/* Кнопка разрешения гироскопа: iOS требует жест, поэтому она висит
+   поверх снимка по центру и исчезает сразу после разрешения. */
+.perm {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 40;
+  padding: 14px 22px;
+  border: 0;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .94);
+  color: #04121f;
+  font-family: var(--font);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.perm[hidden] { display: none; }
+.loader, .fatal {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+  background: var(--bg);
+  z-index: 50;
+  font-size: 14px;
+  color: var(--ink-dim);
+}
+.loader[hidden], .fatal[hidden] { display: none; }
+.fatal { color: #ffb4ae; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; }

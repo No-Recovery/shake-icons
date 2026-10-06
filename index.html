@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shake Icons</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="page-upload">
+
+<main class="upload">
+  <h1 class="upload__title">Shake Icons</h1>
+
+  <button class="bigbtn" id="pick">
+    Загрузить два фото
+  </button>
+
+  <input type="file" id="files" accept="image/*" multiple hidden>
+
+  <p class="upload__hint" id="hint">
+    Выберите два скриншота одного экрана:&nbsp;без иконок и с иконками
+  </p>
+
+  <div class="pair" id="pair" hidden>
+    <figure class="slot" data-role="clean">
+      <canvas class="slot__img"></canvas>
+      <figcaption>Без иконок</figcaption>
+    </figure>
+    <figure class="slot" data-role="icons">
+      <canvas class="slot__img"></canvas>
+      <figcaption>С иконками</figcaption>
+    </figure>
+  </div>
+
+  <div class="status" id="status" hidden></div>
+
+  <div class="actions" id="actions" hidden>
+    <button class="linkbtn" id="swap">Поменять местами</button>
+    <button class="linkbtn" id="replace">Выбрать заново</button>
+  </div>
+
+  <button class="gobtn" id="go" hidden>Тестировать</button>
+
+  <div class="error" id="error" hidden></div>
+</main>
+
+<script src="lib.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

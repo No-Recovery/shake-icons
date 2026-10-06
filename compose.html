@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Shake Icons — экран</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="page-compose">
+
+<!-- Снимок занимает всю страницу: никаких панелей сверху и снизу -->
+<div class="stage">
+  <div class="stage__inner">
+    <canvas class="screen" id="screen"></canvas>
+  </div>
+</div>
+
+<!-- iOS не даёт гироскоп без жеста, поэтому кнопка разрешения висит
+     поверх снимка и исчезает, как только доступ получен -->
+<button class="perm" id="gyro" hidden>Разрешить гироскоп</button>
+
+<!-- Служебные значения нигде не рисуются, на них завязана физика и стенд -->
+<span hidden id="statIcons">—</span>
+<span hidden id="statState">—</span>
+<span hidden id="tilt"></span>
+<span hidden id="hint"></span>
+<button hidden id="reset"></button>
+
+<div class="loader" id="loader">Загружаем скриншоты…</div>
+<pre class="fatal" id="fatal" hidden></pre>
+
+<script src="lib.js"></script>
+<script src="compose.js"></script>
+</body>
+</html>
