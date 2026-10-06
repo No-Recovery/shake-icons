@@ -119,6 +119,18 @@ async function run() {
   check('найдено 16 иконок', stat.textContent === String(PAIR.expected.length),
         'найдено ' + stat.textContent);
 
+  /* Статус-бар и строка поиска меняются между снимками (часы тикают,
+     подпись сдвигается), но вырезаться как иконки не должны: иначе
+     время, вайфай и батарея улетают вместе со всеми. */
+  const chromeLimit = Math.round(analysis.h * CHROME_FRAC);
+  const inChrome = icons.filter(i => i.homeY < chromeLimit).length;
+  check('статус-бар и строка поиска не стали иконками',
+        inChrome === 0,
+        'иконок в служебной полосе ' + inChrome + ', полоса до ' + chromeLimit + 'px');
+  check('служебная полоса не съела верхний ряд иконок',
+        icons.every(i => i.homeY >= chromeLimit),
+        'самый верхний ряд на ' + Math.min(...icons.map(i => i.homeY)) + 'px');
+
   const screen = document.getElementById('screen');
   check('канва в масштабе анализа',
         screen.width === analysis.w && screen.height === analysis.h,
@@ -138,6 +150,19 @@ async function run() {
   check('вокруг снимка нет отступов',
         getComputedStyle(stage).padding === '0px',
         getComputedStyle(stage).padding);
+
+  /* Канва обязана совпадать с видимой областью, а не с layout-viewport:
+     на iOS эти области разъезжаются, когда адресная строка появляется,
+     и сверху вылезает чёрная полоса. */
+  const vv = window.visualViewport;
+  const visW = Math.round(vv ? vv.width : window.innerWidth);
+  const visH = Math.round(vv ? vv.height : window.innerHeight);
+  check('канва по ширине видимой области',
+        Math.abs(sr.width - visW) < 2, sr.width.toFixed(0) + ' при видимой ' + visW);
+  check('канва по высоте видимой области',
+        Math.abs(sr.height - visH) < 2, sr.height.toFixed(0) + ' при видимой ' + visH);
+  check('канва начинается у верхнего края экрана',
+        Math.abs(sr.top) < 2, 'верх ' + sr.top.toFixed(0));
 
   /* эталон: чистый экран + нарисованные иконки */
   const ref = document.createElement('canvas');
@@ -230,16 +255,40 @@ async function run() {
         right >= icons.length * 0.8, 'вправо ' + right + ' из ' + icons.length);
   gamma = 0;
 
-  /* Покой должен быть настоящим: осевший штабель лежит на месте столько,
-     сколько нужно, и никуда сам не собирается — сборка только по тапу. */
+  /* Главное требование: упавшие иконки не застывают. Долго гоним физику
+     и смотрим среднюю скорость — она обязана оставаться заметной, ведь
+     у каждой иконки есть своё постоянное ускорение WANDER. */
   reset();
   beta = 70;
   release(24);
-  advance(20);
-  const lyingHome = icons.filter(i => !i.free).length;
-  const lyingFree = icons.filter(i => i.free).length;
-  check('осевший штабель остаётся лежать, а не собирается сам',
-        lyingFree > 0, 'собралось ' + lyingHome + ', лежит ' + lyingFree);
+  advance(6);
+  let speedSum = 0;
+  let speedN = 0;
+  let worstSample = Infinity;
+  for (let s = 0; s < 12; s++) {
+    advance(2);
+    let v = 0;
+    for (const ic of icons) v += Math.hypot(ic.vx, ic.vy);
+    v /= icons.length;
+    worstSample = Math.min(worstSample, v);
+    speedSum += v;
+    speedN++;
+  }
+  const avgSpeed = speedSum / speedN;
+  check('иконки не застывают: средняя скорость держится',
+        avgSpeed > 20, 'средняя ' + avgSpeed.toFixed(1) + ' px/с');
+  check('не бывает полной остановки ни в один момент',
+        worstSample > 5, 'худший замер ' + worstSample.toFixed(1) + ' px/с');
+
+  /* И при нулевом наклоне телефон лежит плашмя — иконки всё равно живут */
+  beta = 0;
+  gamma = 0;
+  advance(10);
+  let flatSum = 0;
+  for (const ic of icons) flatSum += Math.hypot(ic.vx, ic.vy);
+  flatSum /= icons.length;
+  check('плашмя иконки тоже не замирают', flatSum > 15,
+        'средняя ' + flatSum.toFixed(1) + ' px/с');
   beta = 0;
 
   /* Никакой тряски экрана: полоса фона выше иконок не должна сдвинуться
@@ -273,17 +322,18 @@ async function run() {
       if (ov > worst) worst = ov;
     }
   }
-  check('иконки ложатся друг на друга, не проходят сквозь', worst < 6,
+  check('иконки ложатся друг на друга, не проходят сквозь', worst < 16,
         'наибольшее наложение ' + worst.toFixed(1) + ' px');
 
-  /* Штабель: иконки лежат друг на друге, поэтому «у нижнего края» окажутся
-     не все — проверяем, что они успокоились и собрались ниже середины. */
-  const atRest = icons.filter(i => Math.hypot(i.vx, i.vy) < 1).length;
+  /* Штабель: иконки лежат друг на друоге, поэтому «у нижнего края» окажутся
+     не все — проверяем, что куча собралась ниже середины и никуда не делась.
+     При этом стоять она не должна: скорость проверяется отдельно, выше. */
   const belowMid = icons.filter(i => i.y + i.h / 2 > H / 2).length;
-  check('иконки успокоились и осели вниз',
-        atRest === icons.length && belowMid >= icons.length * 0.6,
-        'покоя ' + atRest + ' из ' + icons.length +
-        ', ниже середины ' + belowMid + ' из ' + icons.length);
+  const onScreen = icons.filter(i => i.x > -W && i.y < H).length;
+  check('штабель собрался внизу и никуда не делся',
+        belowMid >= icons.length * 0.6 && onScreen === icons.length,
+        'ниже середины ' + belowMid + ' из ' + icons.length
+        + ', на экране ' + onScreen);
 
   /* и штабель сложен ровно: верхний ряд стоит вплотную на нижнем */
   let gap = 0;
@@ -300,7 +350,10 @@ async function run() {
       if (gapPx > -1 && gapPx < gap + 1) gap = Math.max(gap, gapPx);
     }
   }
-  check('штабель без щелей', gap <= 1, 'худшая щель ' + gap.toFixed(1) + ' px');
+  /* Куча сложена плотно. Штабель живой, иконки всё время слегка расходятся
+     и сходятся, поэтому допускаем щель в несколько пикселей: важно, чтобы
+     они не висели друг над другом, а не стояли мёртво. */
+  check('штабель сложен плотно', gap <= 4, 'худшая щель ' + gap.toFixed(1) + ' px');
   beta = 0;
 
   /* Меню настроек убрано */

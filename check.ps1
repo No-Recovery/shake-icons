@@ -99,6 +99,7 @@ try {
 
   # ── 5. В коде есть гироскоп и гравитация по наклону
   $js = Get-Content -LiteralPath (Join-Path $root 'site\compose.js') -Raw
+  $lib = Get-Content -LiteralPath (Join-Path $root 'site\lib.js') -Raw
   Check 'слушает deviceorientation' ($js -match "addEventListener\('deviceorientation'") ''
   Check 'спрашивает разрешение iOS' ($js -match 'requestPermission') ''
   Check 'тряска отпускает иконки' ($js -match 'jerk > sens' -and $js -match 'release\(jerk') ''
@@ -109,12 +110,15 @@ try {
   Check 'тап собирает иконки на места' ($js -match "pointerdown" -and $js -match 'function home') ''
   Check 'иконки не разгоняются сами' ($js -notmatch 'IDLE_KICK') ''
   Check 'нет автосбора по времени' ($js -notmatch 'SETTLE_TIME') ''
+  Check 'иконки не засыпают' ($js -notmatch 'SLEEP_TIME' -and $js -notmatch 'slowT' -and $js -notmatch '\.rest\b') ''
+  Check 'у иконок есть постоянное движение' ($js -match 'WANDER' -and $js -match 'WANDER_MIN') ''
+  Check 'канва подгоняется под видимую область' ($js -match 'visualViewport' -and $js -match 'function fitScreen') ''
+  Check 'статус-бар и поиск не вырезаются как иконки' ($lib -match 'CHROME_FRAC' -and $lib -match 'chromePx') ''
   Check 'гравитация из beta/gamma' ($js -match 'Math\.sin\(b\)' -and $js -match 'Math\.sin\(g\)') ''
 
   $app = Get-Content -LiteralPath (Join-Path $root 'site\app.js') -Raw
   Check 'вкладка открывается до await' ($app -match "window\.open\('about:blank'") ''
 
-  $lib = Get-Content -LiteralPath (Join-Path $root 'site\lib.js') -Raw
   Check 'анализ по разнице снимков' ($lib -match 'function analyze') ''
   Check 'связные компоненты' ($lib -match 'function components') ''
   Check 'склейка близких частей' ($lib -match 'function mergeComponents') ''

@@ -59,12 +59,17 @@ const RETURN_TIME = 0.7;  /* длительность возврата, с */
    при нулевом наклоне иконки медленно сползают вниз, а не замирают. */
 const BASE_G = 0.22;
 const MAX_SPEED = 2600;   /* выше иконки уже не летят, а «каша» */
-const REST_SPEED = 12;    /* медленнее этого — считаем, что иконка лежит */
 const BOUNCE_EPS = 60;    /* слабее удара не отскакиваем, а просто гасим */
-const WAKE_V = 30;        /* удар сильнее этого будит лежащую иконку */
-const SLEEP_TIME = 0.25; /* сколько секунд почти без движения — иконка спит */
-const SLEEP_V = 80;      /* медленнее этого — иконка считается уснувшей */
 const CELL = 110;         /* сторона клетки сетки для поиска пар */
+
+/* Иконки не должны замирать ни на секунду: в ролике они живут постоянно,
+   и осевший штабель всё время потихоньку шевелится. Поэтому каждой иконке
+   даём собственное медленно вращающееся ускорение. За полный оборот оно
+   в среднем равно нулю, так что куча не уезжает в угол, но и не засыпает
+   никогда — то, что просили: упавшие иконки продолжают летать. */
+const WANDER = 150;       /* амплитуда, px/с² */
+const WANDER_SPIN = 0.9;  /* насколько быстро своё ускорение крутится, рад/с */
+const WANDER_MIN = 70;    /* медленнее этого иконку подталкиваем, px/с */
 
 let beta = 0;
 let gamma = 0;
@@ -162,18 +167,19 @@ homeX: sp.x,
       rot: 0,
       vrot: 0,
       free: false,
-      rest: false,
       touch: false,
       support: false,
       /* сборка обратно: доля пути, оставшаяся до исходного места */
       back: 1,
       rot0: 0,
-      /* сколько секунд иконка почти не двигается */
-      slowT: 0
+      /* своё «дыхание»: фаза и скорость вращения ускорения WANDER */
+      wA: Math.random() * TAU,
+      wSp: WANDER_SPIN * (0.4 + Math.random() * 0.8) * (Math.random() < 0.5 ? -1 : 1)
     };
   });
 
   statIcons.textContent = String(icons.length);
+  fitScreen();
   updateState();
   hintEl.textContent = defaultHint();
 }
@@ -229,9 +235,7 @@ function release(strength) {
     const ic = icons[i];
     const wasFree = ic.free;
     ic.free = true;
-    ic.rest = false;
     ic.back = 1;
-    ic.slowT = 0;
 
     /* Уже летящие иконки только подталкиваются, а не срываются заново:
        иначе повторная тряска телепортировала бы их обратно на сетку. */
@@ -243,25 +247,17 @@ function release(strength) {
        но это не юла. */
     ic.vrot += (Math.random() - 0.5) * 2 * spinKick;
   }
-  wake();
   released = true;
   updateState();
-}
-
-/* Будим всё, что лежало: наклон изменился или пришёл новый удар. */
-function wake() {
-  for (let i = 0; i < icons.length; i++) icons[i].rest = false;
 }
 
 function reset() {
   for (let i = 0; i < icons.length; i++) {
     const ic = icons[i];
     ic.free = false;
-    ic.rest = false;
     ic.touch = false;
     ic.support = false;
     ic.back = 1;
-    ic.slowT = 0;
     ic.x = ic.homeX;
     ic.y = ic.homeY;
     ic.vx = ic.vy = 0;
@@ -284,10 +280,8 @@ function home() {
     if (!ic.free || ic.back < 1) continue;
     any = true;
     ic.back = 0;
-    ic.slowT = 0;
     /* берём ближайший полный оборот, чтобы не делать лишний круг */
     ic.rot0 = Math.round(ic.rot / TAU) * TAU;
-    ic.rest = false;
   }
   if (!any) return;
   settling = true;
@@ -458,8 +452,7 @@ function resolvePair(a, b) {
     if (b.free) { b.vx += nx * imp; b.vy += ny * imp; }
 
     /* удар выводит из покоя: иначе штабель проглатывал бы падающие иконки */
-    if (-vn > WAKE_V) { a.rest = false; b.rest = false; }
-    a.back = b.back = 1;
+      a.back = b.back = 1;
   }
 
   /* гасим скольжение вдоль поверхности — иначе штабель разъезжается */
@@ -519,19 +512,6 @@ function step(dt) {
   const drag = Math.pow(0.35, dt);
   const fr = friction * dt;
 
-  /* Наклон заметно изменился — лежащие иконки должны снова поехать.
-     Пока гравитация примерно та же, они спят, иначе штабель дрожит. */
-  if (Math.hypot(g.x - prevGX, g.y - prevGY) > 40) wake();
-  prevGX = g.x;
-  prevGY = g.y;
-
-  /* Порог засыпания должен быть выше прироста скорости за один кадр,
-     иначе иконка, упёршаяся в пол, никогда не остановится.
-     SLEEP_V нужен и для зажатых в штабеле иконок: соседи слегка
-     подталкивают их туда-сюда на несколько десятков px/с, и без
-     запаса по порогу они не уснут никогда. */
-  const restV = Math.max(REST_SPEED, SLEEP_V, Math.hypot(g.x, g.y) * dt * 2.5);
-
   for (let i = 0; i < icons.length; i++) {
     const ic = icons[i];
     if (!ic.free) continue;
@@ -550,7 +530,6 @@ function step(dt) {
         ic.x = ic.homeX;
         ic.y = ic.homeY;
         ic.rot = 0;
-        ic.rest = false;
         ic.free = false;
         ic.vx = ic.vy = 0;
         if (settling) {
@@ -561,34 +540,27 @@ function step(dt) {
       continue;
     }
 
-    let slow = false;
+    /* Иконки не засыпают: к гравитации добавляется собственное ускорение
+       WANDER, медленно кружащее по кругу. Из-за него осевший штабель
+       всё время чуть шевелится и никогда не замирает намертво, а
+       из-за усреднения за оборот куча не уплывает в угол. */
+    ic.wA += ic.wSp * dt;
+    const wAmp = WANDER * (0.55 + 0.45 * Math.sin(ic.wA * 2.1));
+    const wx = Math.cos(ic.wA) * wAmp;
+    const wy = Math.sin(ic.wA) * wAmp;
 
-    if (ic.rest) {
-      /* лежит: гравитация не давит, движение только гасится */
-      ic.vx = applyFriction(ic.vx, fr * 3);
-      ic.vy = applyFriction(ic.vy, fr * 3);
-      if (Math.hypot(ic.vx, ic.vy) > REST_SPEED) {
-        ic.rest = false;
-      } else {
-        ic.vx = 0;
-        ic.vy = 0;
-      }
-    } else {
-      ic.vx = applyFriction((ic.vx + g.x * dt) * drag, fr);
-      ic.vy = applyFriction((ic.vy + g.y * dt) * drag, fr);
+    ic.vx = applyFriction((ic.vx + (g.x + wx) * dt) * drag, fr);
+    ic.vy = applyFriction((ic.vy + (g.y + wy) * dt) * drag, fr);
 
-      /* потолок скорости: без него при большой силе иконки слипаются в кашу */
-      const sp = Math.hypot(ic.vx, ic.vy);
-      if (sp > MAX_SPEED) {
-        ic.vx = (ic.vx / sp) * MAX_SPEED;
-        ic.vy = (ic.vy / sp) * MAX_SPEED;
-      }
-      slow = sp < restV;
+    /* потолок скорости: без него при большой силе иконки слипаются в кашу */
+    const sp = Math.hypot(ic.vx, ic.vy);
+    if (sp > MAX_SPEED) {
+      ic.vx = (ic.vx / sp) * MAX_SPEED;
+      ic.vy = (ic.vy / sp) * MAX_SPEED;
     }
 
     /* Вращение: раскручивается ударами и быстро затихает само. */
     ic.vrot *= Math.max(0, 1 - spinFriction * dt);
-    if (ic.rest) ic.vrot *= Math.max(0, 1 - spinFriction * 2 * dt);
 
     /* Больше maxTurn за полёт иконка не доворачивается: в ролике это
        короткий доворот, а не непрерывное кручение. */
@@ -606,25 +578,30 @@ function step(dt) {
     ic.y += ic.vy * dt;
 
     collide(ic);
-
-    /* Засыпаем, когда под ноги есть опора. Если опоры нет, но иконка всё
-       равно почти не двигается — она зажата в штабеле, и без этого
-       правила такие иконки никогда не успокоились бы. Замирать в
-       воздухе им не грозит: там скорость растёт сразу. */
-    if (slow) {
-      ic.slowT += dt;
-      if (ic.support || ic.slowT > SLEEP_TIME) ic.rest = true;
-    } else {
-      ic.slowT = 0;
-      if (ic.rest && !ic.support) ic.rest = false;
-    }
   }
 
   solveOverlaps();
 
+  /* Одного ускорения WANDER в куче не хватает: иконки прижаты весом
+     соседей, и контактные удары гасят его целиком — замер показывает
+     около нуля. Поэтому кто всё же встал, получает толчок прямо по
+     своему направлению: так осевший штабель непрерывно шевелится и
+     иконки никогда не замирают. Направление у всех своё и за оборот
+     поворачивается целиком, поэтому куча никуда не уплывает. */
+  for (let i = 0; i < icons.length; i++) {
+    const ic = icons[i];
+    if (!ic.free || ic.back < 1) continue;
+    const sp = Math.hypot(ic.vx, ic.vy);
+    if (sp < WANDER_MIN) {
+      const k = WANDER_MIN - sp;
+      ic.vx += Math.cos(ic.wA) * k;
+      ic.vy += Math.sin(ic.wA) * k;
+    }
+  }
+
   /* Последнее слово — после раскладки пар. Иконка, упёршаясь в опору,
-     не должна набирать скорость вдавливания в себя и не должна
-     успокаиваться: иначе штабель понемногу разгонялся бы. */
+     не должна набирать скорость вдавливания в себя: иначе штабель
+     понемногу разгонялся бы. */
   const gl = Math.hypot(g.x, g.y);
   if (gl > 1) {
     const ux = g.x / gl;
@@ -634,11 +611,6 @@ function step(dt) {
       const ic = icons[i];
       if (!ic.free || !ic.support) continue;
 
-      if (ic.rest) {
-        ic.vx = 0;
-        ic.vy = 0;
-        continue;
-      }
       const along = ic.vx * ux + ic.vy * uy;
       if (along > 0 && along < creep) {
         ic.vx -= ux * along;
@@ -648,6 +620,37 @@ function step(dt) {
   }
 
   for (let i = 0; i < icons.length; i++) icons[i].support = icons[i].touch;
+}
+
+/* ── Растяжка снимка во весь экран ─────────────────────────── */
+
+/* Размер страницы на iOS меняется вместе с адресной строкой, и dvh
+   обновляется не сразу: между обновлениями снимок не добирается до
+   краёв и сверху остаётся чёрная полоса. Поэтому размер и положение
+   канвы задаём сами по visualViewport — это ровно та область, которую
+   сейчас видно, — и пересчитываем при каждом её изменении.
+
+   Само соотношение сторон не трогаем: за это отвечает object-fit: cover,
+   который вписывает снимок в канву и срезает лишнее по краям. */
+function fitScreen() {
+  const vv = window.visualViewport;
+  const w = Math.round(vv ? vv.width : window.innerWidth);
+  const h = Math.round(vv ? vv.height : window.innerHeight);
+  if (!w || !h) return;
+  const ox = vv ? vv.offsetLeft : 0;
+  const oy = vv ? vv.offsetTop : 0;
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  /* Когда адресная строка выезжает, видимая область сдвигается вниз.
+     Без этого снимок уезжает под неё и сверху появляется полоса. */
+  canvas.style.transform = 'translate(' + ox + 'px,' + oy + 'px)';
+}
+
+window.addEventListener('resize', fitScreen);
+window.addEventListener('orientationchange', fitScreen);
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', fitScreen);
+  window.visualViewport.addEventListener('scroll', fitScreen);
 }
 
 /* ── Отрисовка ───────────────────────────────────────────── */
