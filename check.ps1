@@ -113,7 +113,7 @@ try {
   Check 'иконки не засыпают' ($js -notmatch 'SLEEP_TIME' -and $js -notmatch 'slowT' -and $js -notmatch '\.rest\b') ''
   Check 'у иконок есть постоянное движение' ($js -match 'WANDER' -and $js -match 'WANDER_MIN') ''
   Check 'канва подгоняется под видимую область' ($js -match 'visualViewport' -and $js -match 'function fitScreen') ''
-  Check 'статус-бар и поиск не вырезаются как иконки' ($lib -match 'CHROME_FRAC' -and $lib -match 'chromePx') ''
+  Check 'интерфейс сверху не вырезается как иконки' ($lib -match 'function isInterface' -and $lib -match 'INTERFACE_AREA_FRAC') ''
   Check 'гравитация из beta/gamma' ($js -match 'Math\.sin\(b\)' -and $js -match 'Math\.sin\(g\)') ''
 
   $app = Get-Content -LiteralPath (Join-Path $root 'site\app.js') -Raw

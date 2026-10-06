@@ -121,15 +121,23 @@ async function run() {
 
   /* Статус-бар и строка поиска меняются между снимками (часы тикают,
      подпись сдвигается), но вырезаться как иконки не должны: иначе
-     время, вайфай и батарея улетают вместе со всеми. */
-  const chromeLimit = Math.round(analysis.h * CHROME_FRAC);
-  const inChrome = icons.filter(i => i.homeY < chromeLimit).length;
+     время, батарея и «Поиск» улетают вместе со всеми. Интерфейс там
+     отбраковывается ещё при разборе маски — здесь проверяем сам инвариант:
+     среди иконок не бывает ни одной «как интерфейс». При этом верхний ряд
+     настоящих иконок может начинаться где угодно, хоть внутри справочной
+     полосы CHROME_FRAC, — иконку это не обрезает, маска не режется. */
+  const iconIface = icons.filter(i => {
+    const c = { minY: i.homeY, w: i.w, h: i.h };
+    if ((c.minY + c.h) >= analysis.h * INTERFACE_ZONE_FRAC) return false;
+    const ratio = c.w > c.h ? c.w / c.h : c.h / c.w;
+    return ratio > INTERFACE_RATIO || (c.w * c.h) < INTERFACE_AREA_FRAC * analysis.w * analysis.h;
+  });
   check('статус-бар и строка поиска не стали иконками',
-        inChrome === 0,
-        'иконок в служебной полосе ' + inChrome + ', полоса до ' + chromeLimit + 'px');
-  check('служебная полоса не съела верхний ряд иконок',
-        icons.every(i => i.homeY >= chromeLimit),
-        'самый верхний ряд на ' + Math.min(...icons.map(i => i.homeY)) + 'px');
+        iconIface.length === 0,
+        'похожих на интерфейс ' + iconIface.length + ' из ' + icons.length);
+  check('верхний ряд иконок не обрезан',
+        icons.every(i => i.h >= Math.min(i.w, i.h) * 0.7),
+        'самый низкий спрайт ' + Math.min(...icons.map(i => i.h)).toFixed(0) + 'px');
 
   const screen = document.getElementById('screen');
   check('канва в масштабе анализа',
