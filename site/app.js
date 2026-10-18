@@ -57,6 +57,27 @@ fileInp.addEventListener('change', async () => {
   fileInp.value = '';
 });
 
+/* Проверка, что пара похожа на скриншоты домашнего экрана iPhone:
+   оба вертикальные, одного размера, с «айфонным» соотношением сторон
+   и достаточным разрешением. Левые фото (альбомные, квадратные, разные
+   размеры) отсекаются до анализа. */
+function validateShots(w0, h0, w1, h1) {
+  if (h0 <= w0 || h1 <= w1) {
+    return 'Нужны вертикальные скриншоты — этот экран работает только с ними.';
+  }
+  if (Math.abs(w0 - w1) > w0 * 0.02 || Math.abs(h0 - h1) > h0 * 0.02) {
+    return 'Скриншоты разного размера — нужны два снимка одного экрана.';
+  }
+  const ratio = w0 / h0;
+  if (ratio < 0.40 || ratio > 0.60) {
+    return 'Похоже, это не скриншот iPhone: не подходит соотношение сторон.';
+  }
+  if (Math.min(w0, h0) < 500) {
+    return 'Слишком маленькое разрешение — нужен настоящий скриншот с телефона.';
+  }
+  return null;
+}
+
 async function setup(files) {
   hint.textContent = 'Анализируем…';
   pair.hidden = true;
@@ -67,16 +88,35 @@ async function setup(files) {
   try {
     const bitmaps = await Promise.all(files.map(f => loadBitmap(f)));
 
+    const shotErr = validateShots(bitmaps[0].width, bitmaps[0].height,
+                                  bitmaps[1].width, bitmaps[1].height);
+    if (shotErr) {
+      hint.textContent = 'Выберите два скриншота одного экрана: без иконок и с иконками';
+      showError(shotErr);
+      return;
+    }
+
     /* Какое фото с иконками: там плотнее границы внутри зоны различий */
     const res = analyze(bitmaps[0], bitmaps[1]);
     const iconsFirst = res.edgeA > res.edgeB;
+
+    const pct = Math.round(100 * res.mask.reduce((s, v) => s + (v ? 1 : 0), 0) / res.mask.length);
+    if (pct < 1) {
+      hint.textContent = 'Выберите два скриншота одного экрана: без иконок и с иконками';
+      showError('Скриншоты почти одинаковые — на одном из них должны быть иконки.');
+      return;
+    }
+    if (pct > 60) {
+      hint.textContent = 'Выберите два скриншота одного экрана: без иконок и с иконками';
+      showError('Слишком много различий — это похоже на две разные картинки, а не скриншоты одного экрана.');
+      return;
+    }
 
     cleanBlob = iconsFirst ? files[1] : files[0];
     iconsBlob = iconsFirst ? files[0] : files[1];
 
     paint(bitmaps[iconsFirst ? 1 : 0], bitmaps[iconsFirst ? 0 : 1]);
 
-    const pct = Math.round(100 * res.mask.reduce((s, v) => s + (v ? 1 : 0), 0) / res.mask.length);
     hint.textContent = 'Готово. Откроется новая вкладка с этим экраном.';
     status.hidden = false;
     status.innerHTML = 'Зона различий: <b>' + pct + '%</b> · иконки определены на '

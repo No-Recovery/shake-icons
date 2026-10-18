@@ -442,6 +442,42 @@ function makeSprite(comp, srcCanvas, boundsW, boundsH) {
       }
     }
   }
+
+  /* Заливка дырок внутри контура. Маска различий отмечает только пиксели,
+     изменившиеся между снимками, поэтому внутри иконки остаются «прозрачные»
+     участки — места, где картинка совпала с чистым экраном. Иконка при этом
+     выглядит дырявой. Заливаем всё, до чего нельзя добраться с края холста,
+     но только в зоне самой иконки (верхний квадрат компонента): подписи под
+     иконкой остаются как есть, иначе внутренности букв заклеиваются. */
+  const solid = new Uint8Array(w * h);
+  for (let p = 0; p < w * h; p++) solid[p] = md.data[p * 4 + 3] ? 1 : 0;
+  const flood = [];
+  const seedFlood = (x, y) => {
+    const p = y * w + x;
+    if (!solid[p]) { solid[p] = 2; flood.push(p); }
+  };
+  for (let x = 0; x < w; x++) { seedFlood(x, 0); seedFlood(x, h - 1); }
+  for (let y = 0; y < h; y++) { seedFlood(0, y); seedFlood(w - 1, y); }
+  while (flood.length) {
+    const p = flood.pop();
+    const x = p % w;
+    const y = (p / w) | 0;
+    if (x > 0) seedFlood(x - 1, y);
+    if (x < w - 1) seedFlood(x + 1, y);
+    if (y > 0) seedFlood(x, y - 1);
+    if (y < h - 1) seedFlood(x, y + 1);
+  }
+  const iconZone = Math.min(h, w);   /* верх компонента — квадрат иконки */
+  for (let p = 0; p < w * h; p++) {
+    if (!solid[p] && ((p / w) | 0) < iconZone) {
+      const o = p * 4;
+      md.data[o] = 255;
+      md.data[o + 1] = 255;
+      md.data[o + 2] = 255;
+      md.data[o + 3] = 255;
+    }
+  }
+
   mx.putImageData(md, 0, 0);
 
   cx.filter = 'blur(0.6px)';
