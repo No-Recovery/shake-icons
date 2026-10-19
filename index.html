@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0a0d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Gravition</title>
+<link rel="icon" href="icon-180.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="page-upload">
+
+<main class="upload">
+  <header class="brand">
+    <img class="brand__icon" src="icon-180.png" alt="">
+    <span class="brand__tx">
+      <b class="brand__name">Gravition</b>
+      <i class="brand__sub">иконки со скриншотов</i>
+    </span>
+  </header>
+
+  <p class="lede">Два снимка одного экрана — с иконками и без. Всё считается в браузере.</p>
+
+  <section class="panel">
+    <p class="step" id="step1"><b>01</b>скриншоты</p>
+    <button class="drop" id="pick" type="button">
+      <span class="drop__mono">выбрать два файла</span>
+      <span class="drop__sub">чистый экран и экран с иконками</span>
+    </button>
+    <input type="file" id="files" accept="image/*" multiple hidden>
+    <p class="upload__hint" id="hint">файлы ещё не выбраны</p>
+
+    <p class="step" id="step2"><b>02</b>пара</p>
+
+    <div class="pair" id="pair" hidden>
+      <figure class="slot" data-role="clean">
+        <canvas class="slot__img"></canvas>
+        <figcaption>01 · без иконок</figcaption>
+      </figure>
+      <figure class="slot" data-role="icons">
+        <canvas class="slot__img"></canvas>
+        <figcaption>02 · с иконками</figcaption>
+      </figure>
+    </div>
+
+    <div class="status" id="status" hidden></div>
+
+    <div class="actions" id="actions" hidden>
+      <button class="linkbtn" id="swap">поменять местами</button>
+      <button class="linkbtn" id="replace">выбрать заново</button>
+    </div>
+
+    <button class="gobtn" id="go" hidden>тестировать</button>
+
+    <div class="error" id="error" hidden></div>
+  </section>
+
+  <p class="upload__foot">всё считается в браузере — скриншоты никуда не отправляются</p>
+</main>
+
+<script src="lib.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
