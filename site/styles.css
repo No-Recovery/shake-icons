@@ -13,6 +13,8 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+[hidden] { display: none !important; }
+
 body {
   font-family: var(--font);
   color: var(--ink);
@@ -35,18 +37,32 @@ body {
 
 .upload {
   width: 100%;
-  max-width: 460px;
+  max-width: 440px;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
 }
 
+.brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 28px;
+}
+
+.brand__icon {
+  width: 76px;
+  height: 76px;
+  border-radius: 19px;
+  box-shadow: 0 16px 34px -14px rgba(168, 85, 247, .75);
+}
+
 .upload__title {
-  font-size: 30px;
+  margin-top: 14px;
+  font-size: 31px;
   font-weight: 700;
   letter-spacing: -.02em;
-  margin-bottom: 30px;
   background: linear-gradient(90deg, #e9d5ff, #a78bfa 60%, #c084fc);
   -webkit-background-clip: text;
   background-clip: text;
@@ -54,34 +70,58 @@ body {
   color: transparent;
 }
 
-.bigbtn {
+.upload__tagline {
+  margin-top: 8px;
+  max-width: 320px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink-dim);
+}
+
+/* Большая зона выбора файлов */
+.drop {
   width: 100%;
-  padding: 20px;
-  border: 0;
-  border-radius: 15px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 30px 20px 28px;
+  border: 1.5px dashed rgba(168, 85, 247, .5);
+  border-radius: 22px;
   cursor: pointer;
   font-family: var(--font);
-  font-size: 19px;
-  font-weight: 600;
-  color: #fff;
-  background: linear-gradient(135deg, #a855f7, #6d28d9);
-  box-shadow: 0 10px 30px -8px rgba(168, 85, 247, .6);
-  transition: transform .14s ease, opacity .14s ease;
+  color: var(--ink);
+  background: linear-gradient(180deg, rgba(168, 85, 247, .12), rgba(168, 85, 247, .03));
+  transition: transform .14s ease, border-color .14s ease, background .14s ease;
   -webkit-tap-highlight-color: transparent;
 }
-.bigbtn:active { transform: scale(.985); }
-.bigbtn[disabled] { opacity: .5; pointer-events: none; }
+.drop:active {
+  transform: scale(.985);
+  border-color: var(--accent);
+  background: rgba(168, 85, 247, .16);
+}
+.drop__icon {
+  width: 38px;
+  height: 38px;
+  margin-bottom: 2px;
+  color: #c084fc;
+}
+.drop__title { font-size: 17px; font-weight: 600; }
+.drop__sub { font-size: 13px; color: var(--ink-dim); }
+
+/* После выбора превью приглашение убираем */
+.upload:has(.pair:not([hidden])) .drop { display: none; }
 
 .upload__hint {
   margin-top: 16px;
-  font-size: 14px;
+  font-size: 13.5px;
   line-height: 1.5;
   color: var(--ink-dim);
 }
 
 /* Превью двух скриншотов */
 .pair {
-  margin-top: 26px;
+  margin-top: 22px;
   width: 100%;
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -91,37 +131,44 @@ body {
 .slot {
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 13px;
+  border-radius: 16px;
   padding: 9px;
   overflow: hidden;
 }
 
 .slot__img {
   display: block;
-  width: 100%;
-  height: 190px;
-  object-fit: contain;
-  border-radius: 7px;
+  max-width: 100%;
+  max-height: 200px;
+  width: auto;
+  height: auto;
+  margin: 0 auto;
+  border-radius: 9px;
   background: #000;
 }
 
 .slot figcaption {
-  margin-top: 8px;
+  margin-top: 9px;
   font-size: 12px;
   color: var(--ink-dim);
 }
 
 .status {
-  margin-top: 18px;
-  font-size: 13.5px;
+  margin-top: 16px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(168, 85, 247, .12);
+  border: 1px solid rgba(168, 85, 247, .22);
+  font-size: 13px;
+  line-height: 1.5;
   color: var(--ink-dim);
 }
 .status b { color: var(--ink); font-weight: 600; }
 
 .actions {
-  margin-top: 14px;
+  margin-top: 15px;
   display: flex;
-  gap: 18px;
+  gap: 20px;
 }
 
 .linkbtn {
@@ -136,21 +183,23 @@ body {
 .linkbtn:hover { text-decoration: underline; }
 
 .gobtn {
-  margin-top: 22px;
+  margin-top: 20px;
   width: 100%;
-  padding: 15px;
-  border: 1px solid rgba(168, 85, 247, .45);
-  border-radius: 13px;
+  padding: 16px;
+  border: 0;
+  border-radius: 15px;
   cursor: pointer;
   font-family: var(--font);
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 600;
-  color: #e9d5ff;
-  background: rgba(168, 85, 247, .16);
-  transition: transform .14s ease;
+  color: #fff;
+  background: linear-gradient(135deg, #a855f7, #6d28d9);
+  box-shadow: 0 12px 32px -10px rgba(168, 85, 247, .65);
+  transition: transform .14s ease, opacity .14s ease;
   -webkit-tap-highlight-color: transparent;
 }
 .gobtn:active { transform: scale(.985); }
+.gobtn[disabled] { opacity: .5; pointer-events: none; }
 
 .error {
   margin-top: 18px;
@@ -162,6 +211,13 @@ body {
   font-size: 13px;
   line-height: 1.5;
   text-align: left;
+}
+
+.upload__foot {
+  margin-top: 22px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-faint);
 }
 
 /* ── Экран композиции ───────────────────────────────────── */
