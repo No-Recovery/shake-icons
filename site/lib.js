@@ -416,9 +416,7 @@ function makeSprite(comp, srcCanvas, boundsW, boundsH) {
     md.data[o + 3] = 255;
   };
 
-  /* Маска жёсткая: она собрана по пикселям, прошедшим порог. Расширяем её
-     на пиксель, иначе срезается сглаженный край самого снимка и иконка
-     выглядит выеденной. */
+  /* Маска жёсткая: она собрана по пикселям, прошедшим порог. */
   const marks = [];
   for (let i = 0; i < comp.px.length; i++) {
     const q = comp.px[i];
@@ -428,12 +426,40 @@ function makeSprite(comp, srcCanvas, boundsW, boundsH) {
     put(lx, ly);
     marks.push(lx, ly);
   }
-  /* Расширяем на круг, а не на крест: у иконок круглые углы, и крест
-     оставляет по диагонали ступеньки, которые видно как обрезки. */
+
+  /* Граница «иконка — подпись» по профилю строк: иконка идёт плотным
+     блоком сверху, между ней и подписью есть пустой зазор. Маска
+     различий дырявая и внутри иконки, и по контуру, поэтому резать по
+     ней нельзя — фон внутри пропадает. Иконку вырезаем геометрически,
+     подпись оставляем по маске. */
+  const rowCnt = new Int32Array(h);
+  for (let i = 0; i < marks.length; i += 2) rowCnt[marks[i + 1]]++;
+  let maxRow = 0;
+  for (let y = 0; y < h; y++) if (rowCnt[y] > maxRow) maxRow = rowCnt[y];
+  let iconEnd = h;
+  if (maxRow > 0) {
+    const gapThr = Math.max(1, Math.round(maxRow * 0.06));
+    let dense = 0;
+    while (dense < h && rowCnt[dense] < maxRow * 0.4) dense++;
+    for (let y = dense + 1; y < h; y++) {
+      if (rowCnt[y] <= gapThr) { iconEnd = y; break; }
+    }
+    if (iconEnd === h) {
+      /* Зазора нет (подпись слиплась с иконкой): считаем иконку квадратом,
+         сторона которого равна её ширине — самой плотной строке. */
+      let top = 0;
+      while (top < h && rowCnt[top] === 0) top++;
+      iconEnd = Math.min(h, top + maxRow + Math.round(GROW) + 1);
+    }
+  }
+
+  /* Подпись ниже границы: расширяем на круг, чтобы не срезать штрихи.
+     Дырки между буквами при этом остаются прозрачными. */
   const rad = Math.round(GROW);
   for (let i = 0; i < marks.length; i += 2) {
     const lx = marks[i];
     const ly = marks[i + 1];
+    if (ly < iconEnd) continue;
     for (let dy = -rad; dy <= rad; dy++) {
       const dy2 = dy * dy;
       for (let dx = -rad; dx <= rad; dx++) {
@@ -443,38 +469,39 @@ function makeSprite(comp, srcCanvas, boundsW, boundsH) {
     }
   }
 
-  /* Заливка дырок внутри контура. Маска различий отмечает только пиксели,
-     изменившиеся между снимками, поэтому внутри иконки остаются «прозрачные»
-     участки — места, где картинка совпала с чистым экраном. Иконка при этом
-     выглядит дырявой. Заливаем всё, до чего нельзя добраться с края холста,
-     но только в зоне самой иконки (верхний квадрат компонента): подписи под
-     иконкой остаются как есть, иначе внутренности букв заклеиваются. */
-  const solid = new Uint8Array(w * h);
-  for (let p = 0; p < w * h; p++) solid[p] = md.data[p * 4 + 3] ? 1 : 0;
-  const flood = [];
-  const seedFlood = (x, y) => {
-    const p = y * w + x;
-    if (!solid[p]) { solid[p] = 2; flood.push(p); }
-  };
-  for (let x = 0; x < w; x++) { seedFlood(x, 0); seedFlood(x, h - 1); }
-  for (let y = 0; y < h; y++) { seedFlood(0, y); seedFlood(w - 1, y); }
-  while (flood.length) {
-    const p = flood.pop();
-    const x = p % w;
-    const y = (p / w) | 0;
-    if (x > 0) seedFlood(x - 1, y);
-    if (x < w - 1) seedFlood(x + 1, y);
-    if (y > 0) seedFlood(x, y - 1);
-    if (y < h - 1) seedFlood(x, y + 1);
+  /* Иконка: bbox по её пикселям, альфа — сплошной скруглённый
+     прямоугольник. Внутри всё непрозрачное, срезается только внешний
+     край, поэтому дыр от совпадения с обоями не остаётся. */
+  let ix0 = w, iy0 = h, ix1 = -1, iy1 = -1;
+  for (let i = 0; i < marks.length; i += 2) {
+    const lx = marks[i];
+    const ly = marks[i + 1];
+    if (ly >= iconEnd) continue;
+    if (lx < ix0) ix0 = lx;
+    if (lx > ix1) ix1 = lx;
+    if (ly < iy0) iy0 = ly;
+    if (ly > iy1) iy1 = ly;
   }
-  const iconZone = Math.min(h, w);   /* верх компонента — квадрат иконки */
-  for (let p = 0; p < w * h; p++) {
-    if (!solid[p] && ((p / w) | 0) < iconZone) {
-      const o = p * 4;
-      md.data[o] = 255;
-      md.data[o + 1] = 255;
-      md.data[o + 2] = 255;
-      md.data[o + 3] = 255;
+  if (ix1 >= 0) {
+    const eg = Math.round(GROW);
+    ix0 = Math.max(0, ix0 - eg);
+    iy0 = Math.max(0, iy0 - eg);
+    ix1 = Math.min(w - 1, ix1 + eg);
+    iy1 = Math.min(iconEnd - 1, iy1 + eg);
+
+    const side = Math.min(ix1 - ix0, iy1 - iy0);
+    const rr = Math.max(1, Math.min(Math.round(0.22 * side), Math.floor(side / 2)));
+    const ax0 = ix0 + rr, ax1 = ix1 - rr;
+    const ay0 = iy0 + rr, ay1 = iy1 - rr;
+
+    for (let ly = iy0; ly <= iy1; ly++) {
+      const dy = ly < ay0 ? ay0 - ly : (ly > ay1 ? ly - ay1 : 0);
+      const dy2 = dy * dy;
+      for (let lx = ix0; lx <= ix1; lx++) {
+        const dx = lx < ax0 ? ax0 - lx : (lx > ax1 ? lx - ax1 : 0);
+        if (dx * dx + dy2 > rr * rr) continue;
+        put(lx, ly);
+      }
     }
   }
 

@@ -68,6 +68,21 @@ try {
   });
   check('все спрайты непустые', empty === 0, 'пустых ' + empty);
 
+  /* Иконка режется по внешнему краю: центр непрозрачен (фон внутри цел),
+     а угол спрайта прозрачен (скругление). */
+  let holeCenter = 0;
+  let sharpCorner = 0;
+  comps.forEach(c => {
+    const sp = makeSprite(c, res.canvasB, res.w, res.h);
+    const d = sp.canvas.getContext('2d').getImageData(0, 0, sp.w, sp.h).data;
+    const cx = sp.w >> 1;
+    const cy = Math.min(sp.w, sp.h) >> 1;
+    if (d[(cy * sp.w + cx) * 4 + 3] < 250) holeCenter++;
+    if (d[3] > 60) sharpCorner++;
+  });
+  check('фон внутри иконок целый', holeCenter === 0, 'с дырой в центре ' + holeCenter);
+  check('углы спрайтов срезаны', sharpCorner === 0, 'не срезано ' + sharpCorner);
+
   /* Фон берётся со снимка без иконок */
   const bgPix = res.canvasA.getContext('2d').getImageData(0, 0, res.w, res.h).data;
   let colored = 0;

@@ -1,11 +1,12 @@
 :root {
-  --bg: #030712;
-  --panel: #12141c;
-  --line: rgba(255, 255, 255, .1);
+  --bg: #0b0416;
+  --panel: #17102a;
+  --line: rgba(168, 85, 247, .16);
   --ink: #fff;
-  --ink-dim: rgba(235, 238, 255, .6);
-  --ink-faint: rgba(235, 238, 255, .35);
-  --blue: #0a84ff;
+  --ink-dim: rgba(235, 228, 255, .6);
+  --ink-faint: rgba(235, 228, 255, .35);
+  --accent: #a855f7;
+  --accent-deep: #6d28d9;
   --red: #ff453a;
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, sans-serif;
 }
@@ -24,6 +25,10 @@ body {
   display: grid;
   place-items: center;
   padding: 32px 20px;
+  background:
+    radial-gradient(120% 55% at 50% -10%, #3b1376 0%, rgba(58, 19, 118, .35) 38%, transparent 70%),
+    linear-gradient(180deg, #12071f 0%, #0b0416 45%, #000 100%);
+  background-attachment: fixed;
 }
 
 /* ── Экран загрузки ─────────────────────────────────────── */
@@ -42,6 +47,11 @@ body {
   font-weight: 700;
   letter-spacing: -.02em;
   margin-bottom: 30px;
+  background: linear-gradient(90deg, #e9d5ff, #a78bfa 60%, #c084fc);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
 }
 
 .bigbtn {
@@ -54,8 +64,8 @@ body {
   font-size: 19px;
   font-weight: 600;
   color: #fff;
-  background: linear-gradient(135deg, #0a84ff, #5e5ce6);
-  box-shadow: 0 10px 30px -8px rgba(10, 132, 255, .6);
+  background: linear-gradient(135deg, #a855f7, #6d28d9);
+  box-shadow: 0 10px 30px -8px rgba(168, 85, 247, .6);
   transition: transform .14s ease, opacity .14s ease;
   -webkit-tap-highlight-color: transparent;
 }
@@ -120,7 +130,7 @@ body {
   padding: 4px 0;
   font-family: var(--font);
   font-size: 13.5px;
-  color: var(--blue);
+  color: #c084fc;
   cursor: pointer;
 }
 .linkbtn:hover { text-decoration: underline; }
@@ -129,14 +139,14 @@ body {
   margin-top: 22px;
   width: 100%;
   padding: 15px;
-  border: 0;
+  border: 1px solid rgba(168, 85, 247, .45);
   border-radius: 13px;
   cursor: pointer;
   font-family: var(--font);
   font-size: 16px;
   font-weight: 600;
-  color: #04121f;
-  background: #fff;
+  color: #e9d5ff;
+  background: rgba(168, 85, 247, .16);
   transition: transform .14s ease;
   -webkit-tap-highlight-color: transparent;
 }
