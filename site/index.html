@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0a0512">
+<meta name="theme-color" content="#0a0710">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <title>Gravition — иконки со скриншотов</title>
@@ -16,48 +16,46 @@
 <main class="upload">
   <header class="brand">
     <img class="brand__icon" src="icon-180.png" alt="">
-    <h1 class="upload__title">Gravition</h1>
-    <p class="upload__tagline">Иконки со скриншотов. Тряхни телефон — и они разлетятся.</p>
+    <span class="brand__name">Gravition<em>вырезает иконки из скриншота</em></span>
   </header>
 
+  <p class="lede">Нужны два снимка одного экрана — с иконками и без. Всё считается прямо в браузере.</p>
+
+  <p class="step" id="step1"><b>01</b>скриншоты</p>
   <button class="drop" id="pick" type="button">
-    <svg class="drop__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.2l1-1.8A1.5 1.5 0 0 1 10 3.5h4a1.5 1.5 0 0 1 1.3.7l1 1.8h1.2A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5z"/>
-      <circle cx="12" cy="12.5" r="3.2"/>
-    </svg>
-    <span class="drop__title">Выбрать два скриншота</span>
+    <span class="drop__mono">[ выбрать два файла ]</span>
     <span class="drop__sub">чистый экран и экран с иконками</span>
   </button>
 
   <input type="file" id="files" accept="image/*" multiple hidden>
 
-  <p class="upload__hint" id="hint">
-    Два снимка одного экрана: без иконок и с иконками
-  </p>
+  <p class="upload__hint" id="hint">Файлы ещё не выбраны</p>
+
+  <p class="step" id="step2"><b>02</b>проверка пары</p>
 
   <div class="pair" id="pair" hidden>
     <figure class="slot" data-role="clean">
       <canvas class="slot__img"></canvas>
-      <figcaption>Без иконок</figcaption>
+      <figcaption>01 · без иконок</figcaption>
     </figure>
     <figure class="slot" data-role="icons">
       <canvas class="slot__img"></canvas>
-      <figcaption>С иконками</figcaption>
+      <figcaption>02 · с иконками</figcaption>
     </figure>
   </div>
 
   <div class="status" id="status" hidden></div>
 
   <div class="actions" id="actions" hidden>
-    <button class="linkbtn" id="swap">Поменять местами</button>
-    <button class="linkbtn" id="replace">Выбрать заново</button>
+    <button class="linkbtn" id="swap">поменять местами</button>
+    <button class="linkbtn" id="replace">выбрать заново</button>
   </div>
 
-  <button class="gobtn" id="go" hidden>Тестировать</button>
+  <button class="gobtn" id="go" hidden>тестировать</button>
 
   <div class="error" id="error" hidden></div>
 
-  <p class="upload__foot">Всё считается локально — скриншоты никуда не отправляются.</p>
+  <p class="upload__foot">всё считается в браузере — скриншоты никуда не отправляются</p>
 </main>
 
 <script src="lib.js"></script>
